@@ -100,100 +100,6 @@ impl Plugin for LevelPlugin {
     }
 }
 
-fn load_assets(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut loading_assets: ResMut<LoadingAssets>,
-) {
-    let mut prototype_textures = vec![];
-
-    // there is 6 colors where each color has 13 textures
-    // we will load all of them for now: where the format is: asset_server.load("materials/prototyping/blocks/Dark/texture_01.png")
-    // the colors are Dark, Light, Green, Red, Orange, Purple
-    let colors = ["Dark", "Light", "Green", "Red", "Orange", "Purple"];
-    for color in colors {
-        for i in 1..=13 {
-            let texture_path = format!("textures/{}/texture_{:02}.png", color, i);
-            let handle = asset_server.load_with_settings(texture_path, |s: &mut _| {
-                *s = ImageLoaderSettings {
-                    sampler: ImageSampler::Descriptor(ImageSamplerDescriptor {
-                        // rewriting mode to repeat image,
-                        address_mode_u: ImageAddressMode::Repeat,
-                        address_mode_v: ImageAddressMode::Repeat,
-                        address_mode_w: ImageAddressMode::Repeat,
-                        mag_filter: ImageFilterMode::Nearest,
-                        min_filter: ImageFilterMode::Linear,
-                        mipmap_filter: ImageFilterMode::Linear,
-                        lod_min_clamp: 0.0,
-                        lod_max_clamp: 32.0,
-                        anisotropy_clamp: 1,
-                        ..Default::default()
-                    }),
-                    ..default()
-                }
-            });
-            prototype_textures.push(handle.clone());
-            loading_assets.handles.push(handle.untyped());
-        }
-    }
-
-    commands.insert_resource(TextureAssets { prototype_textures });
-}
-
-// --- Helper Functions ---
-
-/// Calculates UV scaling based on object size to maintain texture density.
-fn calculate_uv_scale(object_size: Vec3, tile_factor: f32) -> Affine2 {
-    let mut dims = [
-        object_size.x.abs(),
-        object_size.y.abs(),
-        object_size.z.abs(),
-    ];
-    dims.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    Affine2::from_scale(Vec2::new(dims[0], dims[1]) / tile_factor)
-}
-
-/// Creates a StandardMaterial with specific texture and UV transform, adds it to assets.
-/// Returns handle to the created material or a fallback if texture index is invalid.
-fn create_material_with_uv(
-    texture_index: usize,
-    object_size: Vec3, // Needed for UV calculation
-    uv_tile_factor: f32,
-    level_assets: &Res<TextureAssets>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    fallback_material_handle: &Handle<StandardMaterial>, // Pass in the pre-made fallback
-) -> Handle<StandardMaterial> {
-    match level_assets.prototype_textures.get(texture_index) {
-        Some(texture_handle) => {
-            // Calculate UV transform for this specific material instance
-            let uv_transform = calculate_uv_scale(object_size, uv_tile_factor);
-
-            // Create the material with texture and UV transform
-            materials.add(StandardMaterial {
-                base_color_texture: Some(texture_handle.clone()),
-                uv_transform, // Apply the calculated transform here
-                perceptual_roughness: 0.7,
-                metallic: 0.1,
-                ..default()
-            })
-        }
-        None => {
-            // Texture index invalid or assets empty, return the fallback handle
-            if level_assets.prototype_textures.is_empty() {
-                warn_once!("TextureAssets resource is empty. Using fallback material.");
-            } else {
-                warn_once!(
-                    "Texture index {} is out of bounds (max is {}). Using fallback material.",
-                    texture_index,
-                    level_assets.prototype_textures.len().saturating_sub(1) // Prevent underflow if len is 0
-                );
-            }
-            fallback_material_handle.clone()
-        }
-    }
-}
-
 // --- Level Creation System ---
 
 pub fn create_level(
@@ -1175,4 +1081,98 @@ pub fn create_level_2(
     // current_x_offset += DEBRIS_AREA_WIDTH.max(LEVEL_2_OBJECT_SPACING); // Increment if needed
 
     info!("Level 2 creation complete.");
+}
+
+fn load_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut loading_assets: ResMut<LoadingAssets>,
+) {
+    let mut prototype_textures = vec![];
+
+    // there is 6 colors where each color has 13 textures
+    // we will load all of them for now: where the format is: asset_server.load("materials/prototyping/blocks/Dark/texture_01.png")
+    // the colors are Dark, Light, Green, Red, Orange, Purple
+    let colors = ["Dark", "Light", "Green", "Red", "Orange", "Purple"];
+    for color in colors {
+        for i in 1..=13 {
+            let texture_path = format!("textures/{}/texture_{:02}.png", color, i);
+            let handle = asset_server.load_with_settings(texture_path, |s: &mut _| {
+                *s = ImageLoaderSettings {
+                    sampler: ImageSampler::Descriptor(ImageSamplerDescriptor {
+                        // rewriting mode to repeat image,
+                        address_mode_u: ImageAddressMode::Repeat,
+                        address_mode_v: ImageAddressMode::Repeat,
+                        address_mode_w: ImageAddressMode::Repeat,
+                        mag_filter: ImageFilterMode::Nearest,
+                        min_filter: ImageFilterMode::Linear,
+                        mipmap_filter: ImageFilterMode::Linear,
+                        lod_min_clamp: 0.0,
+                        lod_max_clamp: 32.0,
+                        anisotropy_clamp: 1,
+                        ..Default::default()
+                    }),
+                    ..default()
+                }
+            });
+            prototype_textures.push(handle.clone());
+            loading_assets.handles.push(handle.untyped());
+        }
+    }
+
+    commands.insert_resource(TextureAssets { prototype_textures });
+}
+
+// --- Helper Functions ---
+
+/// Calculates UV scaling based on object size to maintain texture density.
+fn calculate_uv_scale(object_size: Vec3, tile_factor: f32) -> Affine2 {
+    let mut dims = [
+        object_size.x.abs(),
+        object_size.y.abs(),
+        object_size.z.abs(),
+    ];
+    dims.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    Affine2::from_scale(Vec2::new(dims[0], dims[1]) / tile_factor)
+}
+
+/// Creates a StandardMaterial with specific texture and UV transform, adds it to assets.
+/// Returns handle to the created material or a fallback if texture index is invalid.
+fn create_material_with_uv(
+    texture_index: usize,
+    object_size: Vec3, // Needed for UV calculation
+    uv_tile_factor: f32,
+    level_assets: &Res<TextureAssets>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    fallback_material_handle: &Handle<StandardMaterial>, // Pass in the pre-made fallback
+) -> Handle<StandardMaterial> {
+    match level_assets.prototype_textures.get(texture_index) {
+        Some(texture_handle) => {
+            // Calculate UV transform for this specific material instance
+            let uv_transform = calculate_uv_scale(object_size, uv_tile_factor);
+
+            // Create the material with texture and UV transform
+            materials.add(StandardMaterial {
+                base_color_texture: Some(texture_handle.clone()),
+                uv_transform, // Apply the calculated transform here
+                perceptual_roughness: 0.7,
+                metallic: 0.1,
+                ..default()
+            })
+        }
+        None => {
+            // Texture index invalid or assets empty, return the fallback handle
+            if level_assets.prototype_textures.is_empty() {
+                warn_once!("TextureAssets resource is empty. Using fallback material.");
+            } else {
+                warn_once!(
+                    "Texture index {} is out of bounds (max is {}). Using fallback material.",
+                    texture_index,
+                    level_assets.prototype_textures.len().saturating_sub(1) // Prevent underflow if len is 0
+                );
+            }
+            fallback_material_handle.clone()
+        }
+    }
 }
