@@ -1,5 +1,12 @@
 use avian3d::prelude::{Collider, RigidBody};
-use bevy::{math::Affine2, prelude::*};
+use bevy::{
+    image::{
+        ImageAddressMode, ImageFilterMode, ImageLoaderSettings, ImageSampler,
+        ImageSamplerDescriptor,
+    },
+    math::Affine2,
+    prelude::*,
+};
 
 pub struct LevelPlugin;
 
@@ -9,6 +16,11 @@ pub struct Geometry;
 #[derive(Resource)]
 pub struct TextureAssets {
     pub prototype_textures: Vec<Handle<Image>>,
+}
+
+#[derive(Resource, Default)]
+pub struct LoadingAssets {
+    pub handles: Vec<UntypedHandle>,
 }
 
 impl Plugin for LevelPlugin {
@@ -25,17 +37,39 @@ fn load_assets(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut loading_assets: ResMut<LoadingAssets>,
 ) {
-    let prototype_textures = vec![
-        asset_server.load("textures/prototype_0.png"),
-        asset_server.load("textures/prototype_1.png"),
-        asset_server.load("textures/prototype_2.png"),
-        asset_server.load("textures/prototype_3.png"),
-        asset_server.load("textures/prototype_4.png"),
-        asset_server.load("textures/prototype_5.png"),
-        asset_server.load("textures/prototype_6.png"),
-        asset_server.load("textures/prototype_7.png"),
-    ];
+    let mut prototype_textures = vec![];
+
+    // there is 6 colors where each color has 13 textures
+    // we will load all of them for now: where the format is: asset_server.load("materials/prototyping/blocks/Dark/texture_01.png")
+    // the colors are Dark, Light, Green, Red, Orange, Purple
+    let colors = ["Dark", "Light", "Green", "Red", "Orange", "Purple"];
+    for color in colors {
+        for i in 1..=13 {
+            let texture_path = format!("/textures/{}/texture_{:02}.png", color, i);
+            let handle = asset_server.load_with_settings(texture_path, |s: &mut _| {
+                *s = ImageLoaderSettings {
+                    sampler: ImageSampler::Descriptor(ImageSamplerDescriptor {
+                        // rewriting mode to repeat image,
+                        address_mode_u: ImageAddressMode::Repeat,
+                        address_mode_v: ImageAddressMode::Repeat,
+                        address_mode_w: ImageAddressMode::Repeat,
+                        mag_filter: ImageFilterMode::Nearest,
+                        min_filter: ImageFilterMode::Linear,
+                        mipmap_filter: ImageFilterMode::Linear,
+                        lod_min_clamp: 0.0,
+                        lod_max_clamp: 32.0,
+                        anisotropy_clamp: 1,
+                        ..Default::default()
+                    }),
+                    ..default()
+                }
+            });
+            prototype_textures.push(handle.clone());
+            loading_assets.handles.push(handle.untyped());
+        }
+    }
 
     commands.insert_resource(TextureAssets { prototype_textures });
 }
