@@ -114,39 +114,46 @@ pub fn move_and_slide(
     velocity: &mut KinematicVelocity,
     spatial_query: &SpatialQuery,
 ) {
-    let mut remaining_time = delta_time;
     let mut excluded_entities = vec![*entity];
     excluded_entities.push(*entity);
-
+    let mut remaining_velocity = velocity.0 * delta_time;
     for _ in 0..config.max_iterations {
-        let wish_motion = velocity.0 * remaining_time;
-
         if let Some(hit) = spatial_query.cast_shape(
             collider,
             transform.translation,
             transform.rotation,
-            Dir3::new(wish_motion.normalize_or_zero()).unwrap_or(Dir3::X),
-            &ShapeCastConfig::from_max_distance(wish_motion.length()),
+            Dir3::new(remaining_velocity.normalize_or_zero()).unwrap_or(Dir3::X),
+            &ShapeCastConfig::from_max_distance(remaining_velocity.length()),
             &SpatialQueryFilter::default()
                 .with_excluded_entities(excluded_entities.iter().copied()),
         ) {
-            let fraction = hit.distance / wish_motion.length();
+            // Calculate our safe distances to move
+            let safe_distance = (hit.distance - config.epsilon).max(0.0);
 
-            // Move to just before the collision point
-            transform.translation += wish_motion.normalize_or_zero() * hit.distance;
+            // How far is safe to translate by
+            let safe_movement = remaining_velocity * safe_distance;
 
-            // Prevents sticking
-            transform.translation += hit.normal1 * config.epsilon;
+            // Move the transform to just before the point of collision
+            transform.translation += safe_movement;
+
+            // Update the velocity by how much we moved
+            remaining_velocity -= safe_movement;
 
             // Project velocity onto the surface plane
-            velocity.0 = velocity.0 - (hit.normal1 * velocity.0.dot(hit.normal1));
+            remaining_velocity = remaining_velocity.reject_from(hit.normal1);
 
-            // Scale remaining time
-            remaining_time *= 1.0 - fraction;
+            if remaining_velocity.dot(velocity.0) < 0.0 {
+                // Don't allow sliding back into the surface
+                remaining_velocity = Vec3::ZERO;
+                break;
+            }
         } else {
             // No collision, move the full remaining distance
-            transform.translation += wish_motion;
+            transform.translation += remaining_velocity;
             break;
         }
     }
+
+    // Update the velocity for the next frame
+    velocity.0 = remaining_velocity;
 }
