@@ -56,12 +56,12 @@ fn binding(
     // and will respond to any of them.
     actions
         .bind::<Move>()
-        .to((Cardinal::wasd_keys(), Axial::left_stick()))
-        .with_modifiers((
-            DeadZone::default(), // Apply non-uniform normalization to ensure consistent speed, otherwise diagonal movement will be faster.
-            SmoothNudge::default(), // Make movement smooth and independent of the framerate. To only make it framerate-independent, use `DeltaScale`.
-            Scale::splat(0.3), // Additionally multiply by a constant to achieve the desired speed.
-        ));
+        .to((Cardinal::wasd_keys(), Axial::left_stick()));
+    // .with_modifiers((
+    //     DeadZone::default(), // Apply non-uniform normalization to ensure consistent speed, otherwise diagonal movement will be faster.
+    //     SmoothNudge::default(), // Make movement smooth and independent of the framerate. To only make it framerate-independent, use `DeltaScale`.
+    //     Scale::splat(0.3), // Additionally multiply by a constant to achieve the desired speed.
+    // ));
 
     actions.bind::<Rotate>().to((
         // You can attach modifiers to individual inputs as well.
