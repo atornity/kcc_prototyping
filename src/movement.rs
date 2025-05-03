@@ -86,19 +86,26 @@ fn movement(
         .mul_vec3(Vec3::new(input_vec.x, 0.0, -input_vec.y))
         .normalize_or_zero();
 
-    let mut artifical_velocity = KinematicVelocity(direction * EXAMPLE_MOVEMENT_SPEED);
+    let mut artifical_velocity = direction * EXAMPLE_MOVEMENT_SPEED;
 
     // Apply the final movement
     // kcc_transform.translation += direction * EXAMPLE_MOVEMENT_SPEED * time.delta_secs();
 
-    let filter = SpatialQueryFilter::from_mask(layers.filters).with_excluded_entities([entity]);
+    let rotation = kcc_transform.rotation;
+
+    let filter = SpatialQueryFilter::default()
+        .with_excluded_entities([entity])
+        // this is just a random example
+        .with_mask(layers.filters);
 
     move_and_slide(
         MoveAndSlideConfig::default(),
         collider,
         time.delta_secs(),
-        &mut kcc_transform,
+        &entity,
+        &mut kcc_transform.translation,
         &mut artifical_velocity,
+        rotation,
         &spatial_query,
         &filter,
     )
@@ -119,24 +126,28 @@ impl Default for MoveAndSlideConfig {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     config: MoveAndSlideConfig,
     collider: &Collider,
     delta_time: f32,
-    transform: &mut Transform,
-    velocity: &mut KinematicVelocity,
+    entity: &Entity,
+    translation: &mut Vec3,
+    velocity: &mut Vec3,
+    rotation: Quat,
     spatial_query: &SpatialQuery,
     filter: &SpatialQueryFilter,
 ) {
-    let mut remaining_velocity = velocity.0 * delta_time;
+    let mut remaining_velocity = *velocity * delta_time;
+
     for _ in 0..config.max_iterations {
         if let Some(hit) = spatial_query.cast_shape(
             collider,
-            transform.translation,
-            transform.rotation,
+            *translation,
+            rotation,
             Dir3::new(remaining_velocity.normalize_or_zero()).unwrap_or(Dir3::X),
             &ShapeCastConfig::from_max_distance(remaining_velocity.length()),
-            &filter,
+            filter,
         ) {
             // Calculate our safe distances to move
             let safe_distance = (hit.distance - config.epsilon).max(0.0);
@@ -145,7 +156,7 @@ pub fn move_and_slide(
             let safe_movement = remaining_velocity * safe_distance;
 
             // Move the transform to just before the point of collision
-            transform.translation += safe_movement;
+            *translation += safe_movement;
 
             // Update the velocity by how much we moved
             remaining_velocity -= safe_movement;
@@ -153,18 +164,18 @@ pub fn move_and_slide(
             // Project velocity onto the surface plane
             remaining_velocity = remaining_velocity.reject_from(hit.normal1);
 
-            if remaining_velocity.dot(velocity.0) < 0.0 {
+            if remaining_velocity.dot(*velocity) < 0.0 {
                 // Don't allow sliding back into the surface
                 remaining_velocity = Vec3::ZERO;
                 break;
             }
         } else {
             // No collision, move the full remaining distance
-            transform.translation += remaining_velocity;
+            *translation += remaining_velocity;
             break;
         }
     }
 
     // Update the velocity for the next frame
-    velocity.0 = remaining_velocity;
+    *velocity = remaining_velocity;
 }
