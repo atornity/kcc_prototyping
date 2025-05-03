@@ -12,6 +12,65 @@ use bevy::{
     prelude::*,
 };
 
+// --- Configuration Constants ---
+const MAP_SCALER: f32 = 1.0;
+const OBJECT_SPACING: f32 = 15.0 * MAP_SCALER;
+const BASE_Y: f32 = 0.0;
+const UV_TILE_FACTOR: f32 = 5.0; // Controls texture repetition density
+
+const GROUND_WIDTH: f32 = 200.0;
+const GROUND_HEIGHT: f32 = 1.0;
+const GROUND_DEPTH: f32 = 50.0;
+const WALL_HEIGHT: f32 = 4.0;
+const WALL_THICKNESS: f32 = 0.2;
+const WALL_SEGMENT_LENGTH: f32 = 5.0;
+
+const SMALL_STEP_HEIGHT: f32 = 0.15;
+const SMALL_STEP_DEPTH: f32 = 0.3;
+const SMALL_STEP_WIDTH: f32 = 3.0;
+const NUM_SMALL_STEPS: i32 = 6;
+
+const LARGE_STEP_HEIGHT: f32 = 0.5;
+const LARGE_STEP_DEPTH: f32 = 0.8;
+const LARGE_STEP_WIDTH: f32 = 3.0;
+const NUM_LARGE_STEPS: i32 = 4;
+
+const RAMP_WIDTH: f32 = 4.0;
+const RAMP_LENGTH: f32 = 8.0;
+const RAMP_THICKNESS: f32 = 0.2;
+const SHALLOW_RAMP_ANGLE: f32 = 15.0; // Degrees
+const STEEP_RAMP_ANGLE: f32 = 40.0; // Degrees
+
+const LOW_CEILING_HEIGHT: f32 = 1.5;
+const CEILING_BLOCK_WIDTH: f32 = 5.0;
+const CEILING_BLOCK_HEIGHT: f32 = 0.2;
+const CEILING_BLOCK_DEPTH: f32 = 5.0;
+const ANGLED_CEILING_ANGLE: f32 = -20.0; // Degrees
+
+const CREVICE_WIDTH: f32 = 0.5;
+const CREVICE_WALL_ANGLE: f32 = 60.0; // Degrees
+const CREVICE_LENGTH: f32 = 5.0;
+const CREVICE_WALL_THICKNESS: f32 = 0.2;
+const CREVICE_WALL_HEIGHT: f32 = 5.0;
+
+const MOVING_PLATFORM_WIDTH: f32 = 3.0;
+const MOVING_PLATFORM_HEIGHT: f32 = 0.3;
+const MOVING_PLATFORM_DEPTH: f32 = 3.0;
+const PLATFORM_VERTICAL_DISTANCE: f32 = 5.0;
+const PLATFORM_HORIZONTAL_DISTANCE: f32 = 6.0;
+const PLATFORM_ROTATION_ANGLE: f32 = PI; // 180 degrees
+const PLATFORM_ANIMATION_DURATION: f32 = 3.0; // Seconds for one way
+
+// Texture Indices (adjust based on your `TextureAssets`)
+const TEX_GROUND: usize = 7;
+const TEX_WALL: usize = 3 * 13;
+const TEX_STEP: usize = 9;
+const TEX_RAMP_SHALLOW: usize = 5 * 13;
+const TEX_RAMP_STEEP: usize = 4 * 13;
+const TEX_CEILING: usize = 2 * 13;
+const TEX_PLATFORM: usize = 4 * 13 + 3;
+const TEX_DEFAULT: usize = 0; // Fallback texture index
+
 pub struct LevelPlugin;
 
 #[derive(Component)]
@@ -246,64 +305,6 @@ fn load_assets(
 // }
 //
 
-// --- Configuration Constants ---
-const MAP_SCALER: f32 = 1.0;
-const OBJECT_SPACING: f32 = 15.0 * MAP_SCALER;
-const BASE_Y: f32 = 0.0;
-const UV_TILE_FACTOR: f32 = 5.0; // Controls texture repetition density
-
-const GROUND_WIDTH: f32 = 150.0;
-const GROUND_HEIGHT: f32 = 1.0;
-const GROUND_DEPTH: f32 = 50.0;
-const WALL_HEIGHT: f32 = 4.0;
-const WALL_THICKNESS: f32 = 0.2;
-const WALL_SEGMENT_LENGTH: f32 = 5.0;
-
-const SMALL_STEP_HEIGHT: f32 = 0.15;
-const SMALL_STEP_DEPTH: f32 = 0.3;
-const SMALL_STEP_WIDTH: f32 = 3.0;
-const NUM_SMALL_STEPS: i32 = 6;
-
-const LARGE_STEP_HEIGHT: f32 = 0.5;
-const LARGE_STEP_DEPTH: f32 = 0.8;
-const LARGE_STEP_WIDTH: f32 = 3.0;
-const NUM_LARGE_STEPS: i32 = 4;
-
-const RAMP_WIDTH: f32 = 4.0;
-const RAMP_LENGTH: f32 = 8.0;
-const RAMP_THICKNESS: f32 = 0.2;
-const SHALLOW_RAMP_ANGLE: f32 = 15.0; // Degrees
-const STEEP_RAMP_ANGLE: f32 = 40.0; // Degrees
-
-const LOW_CEILING_HEIGHT: f32 = 1.5;
-const CEILING_BLOCK_WIDTH: f32 = 5.0;
-const CEILING_BLOCK_HEIGHT: f32 = 0.2;
-const CEILING_BLOCK_DEPTH: f32 = 5.0;
-const ANGLED_CEILING_ANGLE: f32 = -20.0; // Degrees
-
-const CREVICE_WIDTH: f32 = 0.5;
-const CREVICE_WALL_ANGLE: f32 = 60.0; // Degrees
-const CREVICE_LENGTH: f32 = 5.0;
-const CREVICE_WALL_THICKNESS: f32 = 0.2;
-const CREVICE_WALL_HEIGHT: f32 = 5.0;
-
-const MOVING_PLATFORM_WIDTH: f32 = 3.0;
-const MOVING_PLATFORM_HEIGHT: f32 = 0.3;
-const MOVING_PLATFORM_DEPTH: f32 = 3.0;
-const PLATFORM_VERTICAL_DISTANCE: f32 = 5.0;
-const PLATFORM_HORIZONTAL_DISTANCE: f32 = 6.0;
-const PLATFORM_ROTATION_ANGLE: f32 = PI; // 180 degrees
-const PLATFORM_ANIMATION_DURATION: f32 = 3.0; // Seconds for one way
-
-// Texture Indices (adjust based on your `TextureAssets`)
-const TEX_GROUND: usize = 7;
-const TEX_WALL: usize = 3 * 13;
-const TEX_STEP: usize = 9;
-const TEX_RAMP_SHALLOW: usize = 5 * 13;
-const TEX_RAMP_STEEP: usize = 4 * 13;
-const TEX_CEILING: usize = 2 * 13;
-const TEX_PLATFORM: usize = 4 * 13 + 3;
-const TEX_DEFAULT: usize = 0; // Fallback texture index
 // --- Helper Functions ---
 
 /// Calculates UV scaling based on object size to maintain texture density.
@@ -395,11 +396,7 @@ pub fn create_level(
         Transform::from_translation(ground_pos),
         // Physics and other components:
         RigidBody::Static,
-        Collider::cuboid(
-            ground_size.x / 2.0,
-            ground_size.y / 2.0,
-            ground_size.z / 2.0,
-        ),
+        Collider::cuboid(ground_size.x, ground_size.y, ground_size.z),
         Geometry,
         Name::new("Ground"),
         // VisibilityBundle::default(), // Might be needed for rendering
