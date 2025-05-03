@@ -34,13 +34,13 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     commands.spawn((
-        Transform::from_xyz(0.0, 5., 0.0),
+        Transform::from_xyz(0.0, 2., 0.0),
         Actions::<DefaultContext>::default(),
         KCCBundle::default(),
         children![(
             Camera3d::default(),
             DefaultCamera,
-            Transform::from_xyz(0.0, 1.5, 0.0)
+            Transform::from_xyz(0.0, 0.75, 0.0)
         )],
     ));
 }
