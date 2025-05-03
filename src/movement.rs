@@ -93,6 +93,11 @@ fn movement(
 
     let rotation = kcc_transform.rotation;
 
+    let filter = SpatialQueryFilter::default()
+        .with_excluded_entities([entity])
+        // this is just a random example
+        .with_mask(layers.filters);
+
     move_and_slide(
         MoveAndSlideConfig::default(),
         collider,
@@ -102,6 +107,7 @@ fn movement(
         &mut artifical_velocity,
         rotation,
         &spatial_query,
+        &filter,
     )
 }
 
@@ -130,6 +136,7 @@ pub fn move_and_slide(
     velocity: &mut Vec3,
     rotation: Quat,
     spatial_query: &SpatialQuery,
+    filter: &SpatialQueryFilter,
 ) {
     let mut remaining_velocity = *velocity * delta_time;
 
@@ -140,7 +147,7 @@ pub fn move_and_slide(
             rotation,
             Dir3::new(remaining_velocity.normalize_or_zero()).unwrap_or(Dir3::X),
             &ShapeCastConfig::from_max_distance(remaining_velocity.length()),
-            &SpatialQueryFilter::default().with_excluded_entities(vec![*entity]),
+            filter,
         ) {
             // Calculate our safe distances to move
             let safe_distance = (hit.distance - config.epsilon).max(0.0);
