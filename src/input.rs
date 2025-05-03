@@ -79,31 +79,34 @@ fn rotate(
     trigger: Trigger<Fired<Rotate>>,
     mut cameras: Query<&mut Transform, (With<DefaultCamera>)>,
     mut players: Query<&mut Transform, (With<KCCMarker>, Without<DefaultCamera>)>,
+    time: Res<Time>,
 ) {
-    // Get the player rotation (only YAW is applied to the player)
+    // Delta
+    let delta_time = time.delta_secs_f64() as f32;
+    let mouse_delta = trigger.value * delta_time;
+
+    // Get the player transform
     let mut player_transform = players.get_mut(trigger.target()).unwrap();
 
-    // Get the camera (child of the player) and apply both YAW and PITCH
+    // Update player rotation (yaw only)
+    let player_rotation = player_transform.rotation;
+    let (player_yaw, _, _) = player_rotation.to_euler(EulerRot::YXZ);
+    let new_player_yaw = player_yaw + mouse_delta.x;
+    player_transform.rotation = Quat::from_rotation_y(new_player_yaw);
+
+    // Get the camera transform
     let Some(mut camera_transform) = cameras.single_mut().ok() else {
         warn!("No camera found for rotation. Skipping camera rotation.");
         return;
-    }; // assuming only one camera exists
+    };
 
-    // Extract current yaw and pitch from the camera
-    let (mut cam_yaw, mut cam_pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
+    // Since camera is a child, we only need to handle pitch
+    let (_, cam_pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    // Apply rotation deltas from input
-    cam_yaw += trigger.value.x.to_radians(); // Yaw (left-right)
-    cam_pitch += trigger.value.y.to_radians(); // Pitch (up-down)
+    // Update pitch (clamped)
+    let new_cam_pitch = (cam_pitch + mouse_delta.y).clamp(-1.54, 1.54);
 
-    // Clamp pitch to prevent flipping (optional but recommended)
-    cam_pitch = cam_pitch.clamp(-1.5, 1.5); // ~±85 degrees
-
-    // Set camera rotation (yaw and pitch)
-    camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, cam_yaw, cam_pitch, 0.0);
-
-    // Set player rotation (yaw only, pitch stays 0)
-    player_transform.rotation = Quat::from_euler(EulerRot::YXZ, cam_yaw, 0.0, 0.0);
+    camera_transform.rotation = Quat::from_euler(EulerRot::YXZ, 0.0, new_cam_pitch, 0.0);
 }
 
 fn capture_cursor(_trigger: Trigger<Completed<CaptureCursor>>, mut window: Single<&mut Window>) {
