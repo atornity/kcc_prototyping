@@ -61,6 +61,8 @@ pub fn move_and_slide(
     delta_time: f32,
     mut on_hit: impl FnMut(ShapeHitData),
 ) {
+    let original_velocity = *velocity;
+
     let mut remaining_motion = *velocity * delta_time;
 
     for _ in 0..config.max_iterations {
@@ -84,16 +86,15 @@ pub fn move_and_slide(
         // Update the velocity by how much we moved
         remaining_motion -= safe_movement;
 
-        // Project velocity onto the surface plane
+        // Project velocity and remaining motion onto the surface plane
         remaining_motion = remaining_motion.reject_from(hit.normal1);
-
         *velocity = velocity.reject_from(hit.normal1);
 
         // Trigger callbacks
         on_hit(hit);
 
-        if remaining_motion.dot(*velocity) < 0.0 {
-            // Don't allow sliding back into the surface
+        // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
+        if remaining_motion.dot(original_velocity) <= 0.0 {
             break;
         }
     }
