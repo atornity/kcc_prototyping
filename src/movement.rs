@@ -60,18 +60,6 @@ fn movement(
     // Get the raw 2D input vector
     let input_vec = q_input.action::<Move>().value().as_axis2d();
 
-    // Create the initial 3D movement direction vector in the XZ plane
-    // Map input X (left/right) to world X
-    // Map input Y (forward/backward) to world Z
-    // Keep world Y (up/down) as 0.0 for planar movement relative to camera yaw
-    let mut movement_dir = Vec3::new(input_vec.x, 0.0, -input_vec.y);
-
-    movement_dir = movement_dir.normalize_or_zero();
-
-    println!(
-        "Initial Movement direction (before yaw): {:?}",
-        movement_dir
-    );
     let Some((_, mut kcc_transform)) = q_kcc.single_mut().ok() else {
         warn!("No KCC found!");
         return;
@@ -79,12 +67,10 @@ fn movement(
 
     // Rotate the movement direction vector by the camera's yaw
     // movement_dir = Quat::from_rotation_y(camera_yaw) * movement_dir;
-
     let direction = kcc_transform
         .rotation
         .mul_vec3(Vec3::new(input_vec.x, 0.0, -input_vec.y))
         .normalize_or_zero();
-    // println!("Movement direction after yaw: {:?}", movement_dir); // Renamed for clarity
 
     // Apply the final movement
     kcc_transform.translation += direction * EXAMPLE_MOVEMENT_SPEED * time.delta_secs();
