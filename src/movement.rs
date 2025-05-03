@@ -42,8 +42,8 @@ const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
 const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
 const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
 const EXAMPLE_FRICTION: f32 = 60.0;
-const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
-const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
+const EXAMPLE_WALKABLE_ANGLE: f32 = 30.0_f32.to_radians();
+const EXAMPLE_JUMP_IMPULSE: f32 = 8.0;
 const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
 fn movement(
@@ -86,11 +86,7 @@ fn movement(
                 character.velocity -= floor_normal * downward_vel;
 
                 // Project input direction on the floor normal to allow walking down slopes
-                // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
-                // even more so for steep slopes.
-                direction = direction
-                    .reject_from_normalized(*floor_normal)
-                    .normalize_or_zero();
+                direction = project_vector_on_floor(direction, floor_normal, character.up);
 
                 EXAMPLE_FLOOR_ACCELERATION
             }
@@ -148,6 +144,10 @@ fn movement(
                     floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
             },
+            |vector, hit| match is_walkable(hit) {
+                true => project_vector_on_floor(vector, Dir3::new(hit.normal1).unwrap(), up),
+                false => vector.reject_from(hit.normal1),
+            },
         );
 
         // Check for floor when previously on the floor and no floor was found during move and slide
@@ -171,6 +171,28 @@ fn movement(
 
         character.floor = floor;
     }
+}
+
+pub fn project_vector_on_floor(vector: Vec3, floor_normal: Dir3, up: Dir3) -> Vec3 {
+    let mut vertical = vector.project_onto(*up);
+    let mut horizontal = vector - vertical;
+
+    // Remove downward velocity
+    if vertical.dot(*up) < 0.0 {
+        vertical = Vec3::ZERO;
+    }
+
+    let Ok(tangent) = Dir3::new(horizontal.cross(*up)) else {
+        return vertical; // No horizontal velocity
+    };
+
+    let Ok(direction) = Dir3::new(tangent.cross(*floor_normal)) else {
+        return vertical + horizontal; // Horizontal direction is perpendicular with the floor normal
+    };
+
+    horizontal = horizontal.project_onto_normalized(*direction);
+
+    vertical + horizontal
 }
 
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.

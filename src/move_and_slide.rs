@@ -60,6 +60,7 @@ pub fn move_and_slide(
     filter: &SpatialQueryFilter,
     delta_time: f32,
     mut on_hit: impl FnMut(ShapeHitData),
+    mut project_on_slope: impl FnMut(Vec3, ShapeHitData) -> Vec3,
 ) {
     let original_velocity = *velocity;
 
@@ -87,8 +88,8 @@ pub fn move_and_slide(
         remaining_motion -= safe_movement;
 
         // Project velocity and remaining motion onto the surface plane
-        remaining_motion = remaining_motion.reject_from(hit.normal1);
-        *velocity = velocity.reject_from(hit.normal1);
+        remaining_motion = project_on_slope(remaining_motion, hit);
+        *velocity = project_on_slope(*velocity, hit);
 
         // Trigger callbacks
         on_hit(hit);
