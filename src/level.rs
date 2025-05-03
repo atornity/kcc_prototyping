@@ -265,7 +265,7 @@ pub fn create_level(
             MeshMaterial3d(step_material),
             Transform::from_xyz(x_pos, y_pos, z_pos),
             RigidBody::Static,
-            Collider::cuboid(step_size.x / 2.0, step_size.y / 2.0, step_size.z / 2.0),
+            Collider::cuboid(step_size.x, step_size.y, step_size.z),
             Geometry,
             Name::new(format!("SmallStep_{}", i + 1)),
             // VisibilityBundle::default(),
@@ -300,7 +300,7 @@ pub fn create_level(
             MeshMaterial3d(step_material),
             Transform::from_xyz(x_pos, y_pos, z_pos),
             RigidBody::Static,
-            Collider::cuboid(step_size.x / 2.0, step_size.y / 2.0, step_size.z / 2.0),
+            Collider::cuboid(step_size.x, step_size.y, step_size.z),
             Geometry,
             Name::new(format!("LargeStep_{}", i + 1)),
             // VisibilityBundle::default(),
@@ -316,8 +316,7 @@ pub fn create_level(
         RAMP_LENGTH * MAP_SCALER,
     );
     let angle_rad = SHALLOW_RAMP_ANGLE.to_radians();
-    let y_offset =
-        (ramp_size.z / 2.0) * angle_rad.sin() + BASE_Y + ramp_size.y / 2.0 * angle_rad.cos();
+    let y_offset = (ramp_size.z) * angle_rad.sin() + BASE_Y + ramp_size.y * angle_rad.cos();
     let z_pos = 0.0;
     let transform = Transform::from_xyz(section_center_x, y_offset, z_pos)
         .with_rotation(Quat::from_rotation_x(-angle_rad));
@@ -335,7 +334,7 @@ pub fn create_level(
         MeshMaterial3d(ramp_material),
         transform, // Apply calculated transform
         RigidBody::Static,
-        Collider::cuboid(ramp_size.x / 2.0, ramp_size.y / 2.0, ramp_size.z / 2.0),
+        Collider::cuboid(ramp_size.x, ramp_size.y, ramp_size.z),
         Geometry,
         Name::new("ShallowRamp"),
         // VisibilityBundle::default(),
@@ -370,7 +369,7 @@ pub fn create_level(
         MeshMaterial3d(ramp_material),
         transform,
         RigidBody::Static,
-        Collider::cuboid(ramp_size.x / 2.0, ramp_size.y / 2.0, ramp_size.z / 2.0),
+        Collider::cuboid(ramp_size.x, ramp_size.y, ramp_size.z),
         Geometry,
         Name::new("SteepRamp"),
         // VisibilityBundle::default(),
@@ -423,11 +422,7 @@ pub fn create_level(
             corner_z + wall_segment_length_scaled / 2.0,
         ),
         RigidBody::Static,
-        Collider::cuboid(
-            wall_size_z.x / 2.0,
-            wall_size_z.y / 2.0,
-            wall_size_z.z / 2.0,
-        ),
+        Collider::cuboid(wall_size_z.x, wall_size_z.y, wall_size_z.z),
         Geometry,
         Name::new("CornerWall_Z"), // VisibilityBundle::default(),
     ));
@@ -438,11 +433,7 @@ pub fn create_level(
         MeshMaterial3d(wall_material_x),
         Transform::from_xyz(section_center_x, wall_y, corner_z),
         RigidBody::Static,
-        Collider::cuboid(
-            wall_size_x.x / 2.0,
-            wall_size_x.y / 2.0,
-            wall_size_x.z / 2.0,
-        ),
+        Collider::cuboid(wall_size_x.x, wall_size_x.y, wall_size_x.z),
         Geometry,
         Name::new("CornerWall_X"), // VisibilityBundle::default(),
     ));
@@ -483,7 +474,7 @@ pub fn create_level(
         MeshMaterial3d(wall_material.clone()), // Clone handle if reusing same material instance
         Transform::from_translation(wall1_pos),
         RigidBody::Static,
-        Collider::cuboid(wall_size.x / 2.0, wall_size.y / 2.0, wall_size.z / 2.0),
+        Collider::cuboid(wall_size.x, wall_size.y, wall_size.z),
         Geometry,
         Name::new("AcuteWall_1"), // VisibilityBundle::default(),
     ));
@@ -497,7 +488,7 @@ pub fn create_level(
         MeshMaterial3d(wall_material), // Can reuse if cloning above, otherwise create new if needed
         Transform::from_translation(wall2_pos).with_rotation(rotation),
         RigidBody::Static,
-        Collider::cuboid(wall_size.x / 2.0, wall_size.y / 2.0, wall_size.z / 2.0),
+        Collider::cuboid(wall_size.x, wall_size.y, wall_size.z),
         Geometry,
         Name::new("AcuteWall_2"), // VisibilityBundle::default(),
     ));
@@ -528,11 +519,7 @@ pub fn create_level(
         MeshMaterial3d(ceiling_material),
         Transform::from_translation(ceiling_pos),
         RigidBody::Static,
-        Collider::cuboid(
-            ceiling_size.x / 2.0,
-            ceiling_size.y / 2.0,
-            ceiling_size.z / 2.0,
-        ),
+        Collider::cuboid(ceiling_size.x, ceiling_size.y, ceiling_size.z),
         Geometry,
         Name::new("LowCeiling"), // VisibilityBundle::default(),
     ));
@@ -564,11 +551,7 @@ pub fn create_level(
         MeshMaterial3d(ceiling_material),
         transform,
         RigidBody::Static,
-        Collider::cuboid(
-            ceiling_size.x / 2.0,
-            ceiling_size.y / 2.0,
-            ceiling_size.z / 2.0,
-        ),
+        Collider::cuboid(ceiling_size.x, ceiling_size.y, ceiling_size.z),
         Geometry,
         Name::new("AngledCeiling"), // VisibilityBundle::default(),
     ));
@@ -610,9 +593,9 @@ pub fn create_level(
         transform1,
         RigidBody::Static,
         Collider::cuboid(
-            crevice_wall_size.x / 2.0,
-            crevice_wall_size.y / 2.0,
-            crevice_wall_size.z / 2.0,
+            crevice_wall_size.x,
+            crevice_wall_size.y,
+            crevice_wall_size.z,
         ),
         Geometry,
         Name::new("CreviceWall_Left"), // VisibilityBundle::default(),
@@ -631,9 +614,9 @@ pub fn create_level(
         transform2,
         RigidBody::Static,
         Collider::cuboid(
-            crevice_wall_size.x / 2.0,
-            crevice_wall_size.y / 2.0,
-            crevice_wall_size.z / 2.0,
+            crevice_wall_size.x,
+            crevice_wall_size.y,
+            crevice_wall_size.z,
         ),
         Geometry,
         Name::new("CreviceWall_Right"), // VisibilityBundle::default(),
@@ -700,11 +683,7 @@ pub fn create_level(
             Transform::from_translation(platform_start_pos),
             // Physics: (Using KinematicPositionBased is generally recommended for smooth KCC interaction)
             RigidBody::Kinematic, // Changed from ::Kinematic
-            Collider::cuboid(
-                platform_size.x / 2.0,
-                platform_size.y / 2.0,
-                platform_size.z / 2.0,
-            ),
+            Collider::cuboid(platform_size.x, platform_size.y, platform_size.z),
             // Animation:
             platform_name, // Name used for target_id
             AnimationGraphHandle(graph_handle),
@@ -763,11 +742,7 @@ pub fn create_level(
             MeshMaterial3d(platform_material.clone()),
             Transform::from_translation(platform_start_pos),
             RigidBody::Kinematic, // Changed from ::Kinematic
-            Collider::cuboid(
-                platform_size.x / 2.0,
-                platform_size.y / 2.0,
-                platform_size.z / 2.0,
-            ),
+            Collider::cuboid(platform_size.x, platform_size.y, platform_size.z),
             platform_name,
             AnimationGraphHandle(graph_handle),
             player,
@@ -819,11 +794,7 @@ pub fn create_level(
             MeshMaterial3d(platform_material), // Last use of this handle
             Transform::from_translation(platform_pos),
             RigidBody::Kinematic, // Changed from ::Kinematic
-            Collider::cuboid(
-                platform_size.x / 2.0,
-                platform_size.y / 2.0,
-                platform_size.z / 2.0,
-            ),
+            Collider::cuboid(platform_size.x, platform_size.y, platform_size.z),
             platform_name,
             AnimationGraphHandle(graph_handle),
             player,
