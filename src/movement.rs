@@ -1,6 +1,8 @@
 use std::f32::consts::PI;
 
-use avian3d::prelude::{Collider, RigidBody, ShapeCastConfig, SpatialQuery, SpatialQueryFilter};
+use avian3d::prelude::{
+    Collider, CollisionLayers, RigidBody, ShapeCastConfig, SpatialQuery, SpatialQueryFilter,
+};
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
@@ -42,7 +44,16 @@ impl Default for KCCBundle {
 const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
 
 fn movement(
-    mut q_kcc: Query<(Entity, &mut Transform, &mut KinematicVelocity, &Collider), With<KCCMarker>>,
+    mut q_kcc: Query<
+        (
+            Entity,
+            &mut Transform,
+            &mut KinematicVelocity,
+            &Collider,
+            &CollisionLayers,
+        ),
+        With<KCCMarker>,
+    >,
     q_input: Single<&Actions<DefaultContext>>,
     q_camera: Query<&Transform, (With<DefaultCamera>, Without<KCCMarker>)>,
     time: Res<Time>,
@@ -61,7 +72,8 @@ fn movement(
     // Get the raw 2D input vector
     let input_vec = q_input.action::<Move>().value().as_axis2d();
 
-    let Some((entity, mut kcc_transform, mut kinematic_vel, collider)) = q_kcc.single_mut().ok()
+    let Some((entity, mut kcc_transform, mut kinematic_vel, collider, layers)) =
+        q_kcc.single_mut().ok()
     else {
         warn!("No KCC found!");
         return;
@@ -108,6 +120,7 @@ impl Default for MoveAndSlideConfig {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     config: MoveAndSlideConfig,
     collider: &Collider,
@@ -118,9 +131,6 @@ pub fn move_and_slide(
     rotation: Quat,
     spatial_query: &SpatialQuery,
 ) {
-    let mut excluded_entities = vec![*entity];
-    excluded_entities.push(*entity);
-
     let mut remaining_velocity = *velocity * delta_time;
 
     for _ in 0..config.max_iterations {
@@ -130,8 +140,7 @@ pub fn move_and_slide(
             rotation,
             Dir3::new(remaining_velocity.normalize_or_zero()).unwrap_or(Dir3::X),
             &ShapeCastConfig::from_max_distance(remaining_velocity.length()),
-            &SpatialQueryFilter::default()
-                .with_excluded_entities(excluded_entities.iter().copied()),
+            &SpatialQueryFilter::default().with_excluded_entities(vec![*entity]),
         ) {
             // Calculate our safe distances to move
             let safe_distance = (hit.distance - config.epsilon).max(0.0);
