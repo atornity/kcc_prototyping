@@ -34,7 +34,7 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     commands.spawn((
-        Transform::from_xyz(0.0, 2., 0.0),
+        Transform::from_xyz(0.0, 3.5, 0.0),
         Actions::<DefaultContext>::default(),
         KCCBundle::default(),
         children![(
