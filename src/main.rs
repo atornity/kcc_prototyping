@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 use input::{DefaultContext, InputPlugin, Jump};
 use level::LevelPlugin;
-use movement::KCCBundle;
+use movement::{KCCBundle, KCCPlugin};
 mod input;
 mod level;
 mod movement;
@@ -25,9 +25,9 @@ fn main() {
         PhysicsPlugins::default(),
         PhysicsDebugPlugin::default(),
         LevelPlugin,
+        KCCPlugin,
     ));
     app.add_systems(Startup, setup);
-    app.add_systems(Update, movement);
 
     app.run();
 }
@@ -43,10 +43,4 @@ fn setup(mut commands: Commands) {
             Transform::from_xyz(0.0, 1.5, 0.0)
         )],
     ));
-}
-
-fn movement(q_kcc: Query<Entity, With<KCCMarker>>, q_input: Single<&Actions<DefaultContext>>) {
-    if q_input.action::<Jump>().state() == ActionState::Fired {
-        println!("Jump action fired!");
-    }
 }
