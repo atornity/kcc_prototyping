@@ -21,7 +21,7 @@ const UV_TILE_FACTOR: f32 = 5.0; // Controls texture repetition density
 const GROUND_WIDTH: f32 = 200.0;
 const GROUND_HEIGHT: f32 = 1.0;
 const GROUND_DEPTH: f32 = 100.0;
-const WALL_HEIGHT: f32 = 4.0;
+const WALL_HEIGHT: f32 = 2.5;
 const WALL_THICKNESS: f32 = 0.2;
 const WALL_SEGMENT_LENGTH: f32 = 5.0;
 
@@ -41,7 +41,7 @@ const RAMP_THICKNESS: f32 = 0.2;
 const SHALLOW_RAMP_ANGLE: f32 = 15.0; // Degrees
 const STEEP_RAMP_ANGLE: f32 = 40.0; // Degrees
 
-const LOW_CEILING_HEIGHT: f32 = 1.5;
+const LOW_CEILING_HEIGHT: f32 = 1.75;
 const CEILING_BLOCK_WIDTH: f32 = 5.0;
 const CEILING_BLOCK_HEIGHT: f32 = 0.2;
 const CEILING_BLOCK_DEPTH: f32 = 5.0;
@@ -222,7 +222,7 @@ pub fn create_level(
         RAMP_LENGTH * MAP_SCALER,
     );
     let angle_rad = SHALLOW_RAMP_ANGLE.to_radians();
-    let y_offset = (ramp_size.z) * angle_rad.sin() + BASE_Y + ramp_size.y * angle_rad.cos();
+    let y_offset = (ramp_size.z / 2.0) * angle_rad.sin() + BASE_Y + ramp_size.y * angle_rad.cos();
     let z_pos = 0.0;
     let transform = Transform::from_xyz(section_center_x, y_offset, z_pos)
         .with_rotation(Quat::from_rotation_x(-angle_rad));
