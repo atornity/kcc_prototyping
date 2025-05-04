@@ -61,40 +61,36 @@ pub fn move_and_slide(
     delta_time: f32,
     mut on_hit: impl FnMut(ShapeHitData),
 ) {
-    let original_velocity = *velocity;
-
-    let mut remaining_motion = *velocity * delta_time;
+    let Ok(original_direction) = Dir3::new(*velocity) else {
+        return;
+    };
 
     for _ in 0..config.max_iterations {
         let Some((safe_movement, hit)) = character_sweep(
             collider,
             config.epsilon,
             *translation,
-            remaining_motion,
+            *velocity * delta_time,
             rotation,
             spatial_query,
             filter,
         ) else {
             // No collision, move the full remaining distance
-            *translation += remaining_motion;
+            *translation += *velocity * delta_time;
             break;
         };
 
         // Move the transform to just before the point of collision
         *translation += safe_movement;
 
-        // Update the velocity by how much we moved
-        remaining_motion -= safe_movement;
-
         // Project velocity and remaining motion onto the surface plane
-        remaining_motion = remaining_motion.reject_from(hit.normal1);
         *velocity = velocity.reject_from(hit.normal1);
 
         // Trigger callbacks
         on_hit(hit);
 
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
-        if remaining_motion.dot(original_velocity) <= 0.0 {
+        if velocity.dot(*original_direction) <= 0.0 {
             break;
         }
     }
