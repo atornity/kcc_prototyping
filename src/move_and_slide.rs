@@ -6,20 +6,19 @@ pub fn character_sweep(
     collider: &Collider,
     epsilon: f32,
     origin: Vec3,
-    motion: Vec3,
+    direction: Dir3,
+    max_distance: f32,
     rotation: Quat,
     spatial_query: &SpatialQuery,
     filter: &SpatialQueryFilter,
-) -> Option<(Vec3, ShapeHitData)> {
-    let (direction, length) = Dir3::new_and_length(motion).ok()?;
-
+) -> Option<(f32, ShapeHitData)> {
     let hit = spatial_query.cast_shape(
         collider,
         origin,
         rotation,
         direction,
         &ShapeCastConfig {
-            max_distance: length + epsilon, // extend the trace slightly
+            max_distance: max_distance + epsilon, // extend the trace slightly
             target_distance: epsilon, // I'm not sure what this does but I think this is correct ;)
             ignore_origin_penetration: true,
             ..Default::default()
@@ -28,9 +27,9 @@ pub fn character_sweep(
     )?;
 
     // How far is safe to translate by
-    let safe_movement = direction * (hit.distance - epsilon).max(0.0);
+    let safe_distance = (hit.distance - epsilon).max(0.0);
 
-    Some((safe_movement, hit))
+    Some((safe_distance, hit))
 }
 
 ////// EXAMPLE MOVEMENT /////////////
@@ -65,28 +64,36 @@ pub fn move_and_slide(
         return;
     };
 
+    let mut remaining_time = delta_time;
+
     for _ in 0..config.max_iterations {
-        let motion = *velocity * delta_time;
+        let Ok((direction, max_distance)) = Dir3::new_and_length(*velocity * remaining_time) else {
+            break;
+        };
 
         let Some((safe_movement, hit)) = character_sweep(
             collider,
             config.epsilon,
             *translation,
-            motion,
+            direction,
+            max_distance,
             rotation,
             spatial_query,
             filter,
         ) else {
             // No collision, move the full remaining distance
-            *translation += motion;
+            *translation += direction * max_distance;
             break;
         };
 
         // Trigger callbacks
         on_hit(hit);
 
+        // Progress time by the movement amount
+        remaining_time *= 1.0 - safe_movement / max_distance;
+
         // Move the transform to just before the point of collision
-        *translation += safe_movement;
+        *translation += direction * safe_movement;
 
         // Project velocity and remaining motion onto the surface plane
         *velocity = velocity.reject_from(hit.normal1);
