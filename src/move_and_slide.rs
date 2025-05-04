@@ -1,5 +1,6 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
+const SIMILARITY_THRESHOLD: f32 = 0.999;
 
 #[must_use]
 pub fn character_sweep(
@@ -101,8 +102,7 @@ pub fn move_and_slide(
 }
 
 fn similar_plane(a: Vec3, b: Vec3) -> bool {
-    // Check if the two vectors are similar by comparing their dot product with a threshold
-    a.dot(b) > (1.0 - f32::EPSILON)
+    a.dot(b) > SIMILARITY_THRESHOLD
 }
 
 fn solve_collision_planes(
