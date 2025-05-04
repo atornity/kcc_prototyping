@@ -67,6 +67,8 @@ pub fn move_and_slide(
 
     let mut remaining_time = delta_time;
 
+    let mut hits = Vec::with_capacity(config.max_iterations);
+
     for _ in 0..config.max_iterations {
         let Ok((direction, max_distance)) = Dir3::new_and_length(*velocity * remaining_time) else {
             break;
@@ -90,6 +92,8 @@ pub fn move_and_slide(
         // Trigger callbacks
         on_hit(hit);
 
+        hits.push(hit.normal1);
+
         // Progress time by the movement amount
         remaining_time *= 1.0 - safe_movement / max_distance;
 
@@ -97,7 +101,7 @@ pub fn move_and_slide(
         *translation += direction * safe_movement;
 
         // Project velocity and remaining motion onto the surface plane
-        *velocity = velocity.reject_from(hit.normal1);
+        *velocity = solve_collision_planes(*velocity, &hits, *original_direction);
 
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
         if velocity.dot(*original_direction) <= 0.0 {
