@@ -1,7 +1,5 @@
-use std::f32::consts::PI;
-
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
@@ -74,7 +72,7 @@ fn movement(
         let input_vec = q_input.action::<Move>().value().as_axis2d();
 
         // Rotate the movement direction vector by the camera's yaw
-        let mut direction =
+        let mut move_input =
             (transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y)).normalize_or_zero();
 
         let max_acceleration = match character.floor {
@@ -84,9 +82,6 @@ fn movement(
                 // Make sure velocity is never towards the floor since this makes the jump height inconsistent
                 let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
                 character.velocity -= floor_normal * downward_vel;
-
-                // Project input direction on the floor normal to allow walking down slopes
-                direction = project_vector_on_floor(direction, floor_normal, character.up);
 
                 EXAMPLE_FLOOR_ACCELERATION
             }
@@ -99,17 +94,6 @@ fn movement(
             }
         };
 
-        // accelerate in the movement direction
-        accelerate(
-            &mut character.velocity,
-            direction,
-            max_acceleration,
-            EXAMPLE_MOVEMENT_SPEED,
-            time.delta_secs(),
-        );
-
-        let rotation = transform.rotation;
-
         // Filter out the character entity as well as any entities not in the character's collision filter
         let mut filter = SpatialQueryFilter::default()
             .with_excluded_entities([entity])
@@ -118,15 +102,63 @@ fn movement(
         // Also filter out sensor entities
         filter.excluded_entities.extend(sensors);
 
-        let config = MoveAndSlideConfig::default();
-
         let up = character.up;
 
         // Check if the floor is walkable
-        let is_walkable = |hit: ShapeHitData| {
-            let slope_angle = up.angle_between(hit.normal1);
+        let is_walkable = |normal| {
+            let slope_angle = up.angle_between(normal);
             slope_angle < EXAMPLE_WALKABLE_ANGLE
         };
+
+        let config = MoveAndSlideConfig::default();
+
+        // Sweep in input direction to determine how to project the input direction.
+        if let Some((motion, hit)) = character_sweep(
+            collider,
+            config.epsilon,
+            transform.translation,
+            move_input * max_acceleration.min(EXAMPLE_MOVEMENT_SPEED) * time.delta_secs(),
+            transform.rotation,
+            &spatial_query,
+            &filter,
+        ) {
+            // Move to the wall or slope
+            transform.translation += motion;
+
+            match is_walkable(hit.normal1) {
+                // When on a walkable surface (floor or gentle slope):
+                // Project the movement vector to follow the slope while maintaining horizontal intent
+                true => {
+                    move_input = project_vector_on_floor(
+                        move_input,
+                        Dir3::new(hit.normal1).unwrap(),
+                        character.up,
+                    );
+                }
+                // When encountering a non-walkable surface (wall or steep slope):
+                // Project the movement vector to slide along the wall and prevent climbing
+                false => {
+                    move_input = project_vector_on_wall(
+                        move_input,
+                        Dir3::new(hit.normal1).unwrap(),
+                        character.up,
+                    );
+                }
+            }
+        }
+
+        // accelerate in the movement direction
+        if let Ok((direction, throttle)) = Dir3::new_and_length(move_input) {
+            accelerate(
+                &mut character.velocity,
+                direction,
+                max_acceleration * throttle,
+                EXAMPLE_MOVEMENT_SPEED,
+                time.delta_secs(),
+            );
+        }
+
+        let rotation = transform.rotation;
 
         let mut floor = None;
 
@@ -140,13 +172,9 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                if is_walkable(hit) {
+                if is_walkable(hit.normal1) {
                     floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
-            },
-            |vector, hit| match is_walkable(hit) {
-                true => project_vector_on_floor(vector, Dir3::new(hit.normal1).unwrap(), up),
-                false => vector.reject_from(hit.normal1),
             },
         );
 
@@ -162,7 +190,7 @@ fn movement(
                 &spatial_query,
                 &filter,
             ) {
-                if is_walkable(hit) {
+                if is_walkable(hit.normal1) {
                     transform.translation += movement; // also snap to the floor
                     floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
@@ -173,7 +201,9 @@ fn movement(
     }
 }
 
+/// Projects a movement vector onto a walkable floor or slope surface
 pub fn project_vector_on_floor(vector: Vec3, floor_normal: Dir3, up: Dir3) -> Vec3 {
+    // Split input vector into vertical and horizontal components
     let mut vertical = vector.project_onto(*up);
     let mut horizontal = vector - vertical;
 
@@ -186,11 +216,32 @@ pub fn project_vector_on_floor(vector: Vec3, floor_normal: Dir3, up: Dir3) -> Ve
         return vertical; // No horizontal velocity
     };
 
-    let Ok(direction) = Dir3::new(tangent.cross(*floor_normal)) else {
+    // Calculate the horizontal direction along the slope
+    // This gives us a vector that follows the slope but maintains original horizontal intent
+    let Ok(horizontal_direction) = Dir3::new(tangent.cross(*floor_normal)) else {
         return vertical + horizontal; // Horizontal direction is perpendicular with the floor normal
     };
 
-    horizontal = horizontal.project_onto_normalized(*direction);
+    // Project horizontal movement onto the calculated direction
+    horizontal = horizontal.project_onto_normalized(*horizontal_direction);
+
+    vertical + horizontal
+}
+
+/// Projects a movement vector against a wall or non-walkable slope
+pub fn project_vector_on_wall(vector: Vec3, floor_normal: Dir3, up: Dir3) -> Vec3 {
+    // Split input vector into vertical and horizontal components
+    let mut vertical = vector.project_onto(*up);
+    let mut horizontal = vector - vertical;
+
+    vertical = vertical.reject_from_normalized(*floor_normal);
+
+    let Ok(tangent) = Dir3::new(floor_normal.cross(*up)) else {
+        return vertical + horizontal; // This is not a wall
+    };
+
+    // Project horizontal movement along the wall tangent
+    horizontal = horizontal.project_onto_normalized(*tangent);
 
     vertical + horizontal
 }
@@ -198,15 +249,11 @@ pub fn project_vector_on_floor(vector: Vec3, floor_normal: Dir3, up: Dir3) -> Ve
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
 fn accelerate(
     velocity: &mut Vec3,
-    direction: impl TryInto<Dir3>,
+    direction: Dir3,
     max_acceleration: f32,
     target_speed: f32,
     delta: f32,
 ) {
-    let Ok(direction) = direction.try_into() else {
-        return;
-    };
-
     // Current speed in the desired direction.
     let current_speed = velocity.dot(*direction);
 
