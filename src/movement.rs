@@ -1,15 +1,13 @@
 use std::f32::consts::PI;
 
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, ShapeCastConfig, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
+use kcc_prototype::move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide};
 
-use crate::{
-    DefaultCamera, KCCMarker,
-    input::{DefaultContext, Jump, Move},
-};
+use crate::input::{DefaultContext, Jump, Move};
 
 pub struct KCCPlugin;
 
@@ -20,162 +18,195 @@ impl Plugin for KCCPlugin {
 }
 
 #[derive(Component)]
-pub struct KinematicVelocity(pub Vec3);
-
-#[derive(Bundle)]
-pub struct KCCBundle {
-    pub collider: Collider,
-    pub rigid_body: RigidBody,
-    pub kcc_marker: KCCMarker,
-    pub kinematic_velocity: KinematicVelocity,
+#[require(
+    RigidBody = RigidBody::Kinematic,
+    Collider = Capsule3d::new(0.35, 1.0),
+)]
+pub struct Character {
+    velocity: Vec3,
+    floor: Option<Dir3>,
+    up: Dir3,
 }
 
-impl Default for KCCBundle {
+impl Default for Character {
     fn default() -> Self {
         Self {
-            collider: Collider::capsule(0.35, 1.0),
-            rigid_body: RigidBody::Kinematic,
-            kcc_marker: KCCMarker,
-            kinematic_velocity: KinematicVelocity(Vec3::ZERO),
+            velocity: Vec3::ZERO,
+            floor: None,
+            up: Dir3::Y,
         }
     }
 }
 
 const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
+const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
+const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
+const EXAMPLE_FRICTION: f32 = 60.0;
+const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
+const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
+const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
 fn movement(
-    mut q_kcc: Query<
-        (
-            Entity,
-            &mut Transform,
-            &mut KinematicVelocity,
-            &Collider,
-            &CollisionLayers,
-        ),
-        With<KCCMarker>,
-    >,
+    mut q_kcc: Query<(
+        Entity,
+        &mut Transform,
+        &mut Character,
+        &Collider,
+        &CollisionLayers,
+    )>,
     q_input: Single<&Actions<DefaultContext>>,
-    q_camera: Query<&Transform, (With<DefaultCamera>, Without<KCCMarker>)>,
+    sensors: Query<Entity, With<Sensor>>,
     time: Res<Time>,
     spatial_query: SpatialQuery,
 ) {
-    // get camera rotation yaw
-    let Some(camera_transform) = q_camera.single().ok() else {
-        warn!("No camera found!");
-        return;
-    };
-
-    if q_input.action::<Jump>().state() == ActionState::Fired {
-        println!("Jump action fired!");
-    }
-
-    // Get the raw 2D input vector
-    let input_vec = q_input.action::<Move>().value().as_axis2d();
-
-    let Some((entity, mut kcc_transform, mut kinematic_vel, collider, layers)) =
-        q_kcc.single_mut().ok()
-    else {
-        warn!("No KCC found!");
-        return;
-    };
-
-    // Rotate the movement direction vector by the camera's yaw
-    // movement_dir = Quat::from_rotation_y(camera_yaw) * movement_dir;
-    let direction = kcc_transform
-        .rotation
-        .mul_vec3(Vec3::new(input_vec.x, 0.0, -input_vec.y))
-        .normalize_or_zero();
-
-    let mut artifical_velocity = direction * EXAMPLE_MOVEMENT_SPEED;
-
-    // Apply the final movement
-    // kcc_transform.translation += direction * EXAMPLE_MOVEMENT_SPEED * time.delta_secs();
-
-    let rotation = kcc_transform.rotation;
-
-    let filter = SpatialQueryFilter::default()
-        .with_excluded_entities([entity])
-        // this is just a random example
-        .with_mask(layers.filters);
-
-    move_and_slide(
-        MoveAndSlideConfig::default(),
-        collider,
-        time.delta_secs(),
-        &entity,
-        &mut kcc_transform.translation,
-        &mut artifical_velocity,
-        rotation,
-        &spatial_query,
-        &filter,
-    )
-}
-
-////// EXAMPLE MOVEMENT /////////////
-pub struct MoveAndSlideConfig {
-    pub max_iterations: usize,
-    pub epsilon: f32,
-}
-
-impl Default for MoveAndSlideConfig {
-    fn default() -> Self {
-        Self {
-            max_iterations: 4,
-            epsilon: 0.01,
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn move_and_slide(
-    config: MoveAndSlideConfig,
-    collider: &Collider,
-    delta_time: f32,
-    entity: &Entity,
-    translation: &mut Vec3,
-    velocity: &mut Vec3,
-    rotation: Quat,
-    spatial_query: &SpatialQuery,
-    filter: &SpatialQueryFilter,
-) {
-    let mut remaining_velocity = *velocity * delta_time;
-
-    for _ in 0..config.max_iterations {
-        if let Some(hit) = spatial_query.cast_shape(
-            collider,
-            *translation,
-            rotation,
-            Dir3::new(remaining_velocity.normalize_or_zero()).unwrap_or(Dir3::X),
-            &ShapeCastConfig::from_max_distance(remaining_velocity.length()),
-            filter,
-        ) {
-            // Calculate our safe distances to move
-            let safe_distance = (hit.distance - config.epsilon).max(0.0);
-
-            // How far is safe to translate by
-            let safe_movement = remaining_velocity * safe_distance;
-
-            // Move the transform to just before the point of collision
-            *translation += safe_movement;
-
-            // Update the velocity by how much we moved
-            remaining_velocity -= safe_movement;
-
-            // Project velocity onto the surface plane
-            remaining_velocity = remaining_velocity.reject_from(hit.normal1);
-
-            if remaining_velocity.dot(*velocity) < 0.0 {
-                // Don't allow sliding back into the surface
-                remaining_velocity = Vec3::ZERO;
-                break;
+    for (entity, mut transform, mut character, collider, layers) in &mut q_kcc {
+        if q_input.action::<Jump>().state() == ActionState::Fired {
+            println!("Jumping!");
+            if character.floor.is_some() {
+                let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
+                character.velocity += impulse;
+                character.floor = None;
             }
-        } else {
-            // No collision, move the full remaining distance
-            *translation += remaining_velocity;
-            break;
         }
+
+        // Get the raw 2D input vector
+        let input_vec = q_input.action::<Move>().value().as_axis2d();
+
+        // Rotate the movement direction vector by the camera's yaw
+        let mut direction =
+            (transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y)).normalize_or_zero();
+
+        let max_acceleration = match character.floor {
+            Some(floor_normal) => {
+                apply_friction(&mut character.velocity, EXAMPLE_FRICTION, time.delta_secs());
+
+                // Make sure velocity is never towards the floor since this makes the jump height inconsistent
+                let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
+                character.velocity -= floor_normal * downward_vel;
+
+                // Project input direction on the floor normal to allow walking down slopes
+                // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
+                // even more so for steep slopes.
+                direction = direction
+                    .reject_from_normalized(*floor_normal)
+                    .normalize_or_zero();
+
+                EXAMPLE_FLOOR_ACCELERATION
+            }
+            None => {
+                // Apply gravity when not grounded
+                let gravity = character.up * -EXAMPLE_GRAVITY * time.delta_secs();
+                character.velocity += gravity;
+
+                EXAMPLE_AIR_ACCELERATION
+            }
+        };
+
+        // accelerate in the movement direction
+        accelerate(
+            &mut character.velocity,
+            direction,
+            max_acceleration,
+            EXAMPLE_MOVEMENT_SPEED,
+            time.delta_secs(),
+        );
+
+        let rotation = transform.rotation;
+
+        // Filter out the character entity as well as any entities not in the character's collision filter
+        let mut filter = SpatialQueryFilter::default()
+            .with_excluded_entities([entity])
+            .with_mask(layers.filters);
+
+        // Also filter out sensor entities
+        filter.excluded_entities.extend(sensors);
+
+        let config = MoveAndSlideConfig::default();
+
+        let up = character.up;
+
+        // Check if the floor is walkable
+        let is_walkable = |hit: ShapeHitData| {
+            let slope_angle = up.angle_between(hit.normal1);
+            slope_angle < EXAMPLE_WALKABLE_ANGLE
+        };
+
+        let mut floor = None;
+
+        move_and_slide(
+            &spatial_query,
+            collider,
+            &mut transform.translation,
+            &mut character.velocity,
+            rotation,
+            config,
+            &filter,
+            time.delta_secs(),
+            |hit| {
+                if is_walkable(hit) {
+                    floor = Some(Dir3::new(hit.normal1).unwrap());
+                }
+            },
+        );
+
+        // Check for floor when previously on the floor and no floor was found during move and slide
+        // to avoid rapid changes to the grounded state
+        if character.floor.is_some() && floor.is_none() {
+            if let Some((movement, hit)) = character_sweep(
+                collider,
+                config.epsilon,
+                transform.translation,
+                -character.up * 10.0, // arbitrary trace distance
+                rotation,
+                &spatial_query,
+                &filter,
+            ) {
+                if is_walkable(hit) {
+                    transform.translation += movement; // also snap to the floor
+                    floor = Some(Dir3::new(hit.normal1).unwrap());
+                }
+            }
+        }
+
+        character.floor = floor;
+    }
+}
+
+/// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
+fn accelerate(
+    velocity: &mut Vec3,
+    direction: impl TryInto<Dir3>,
+    max_acceleration: f32,
+    target_speed: f32,
+    delta: f32,
+) {
+    let Ok(direction) = direction.try_into() else {
+        return;
+    };
+
+    // Current speed in the desired direction.
+    let current_speed = velocity.dot(*direction);
+
+    // No acceleration is needed if current speed exceeds target.
+    if current_speed >= target_speed {
+        return;
     }
 
-    // Update the velocity for the next frame
-    *velocity = remaining_velocity;
+    // Clamp to avoid acceleration past the target speed.
+    let accel_speed = f32::min(target_speed - current_speed, max_acceleration * delta);
+
+    *velocity += accel_speed * direction;
+}
+
+/// Constant acceleration in the opposite direction of velocity.
+pub fn apply_friction(velocity: &mut Vec3, friction: f32, delta: f32) {
+    let speed_sq = velocity.length_squared();
+
+    if speed_sq < 1e-4 {
+        return;
+    }
+
+    let factor = f32::exp(-friction / speed_sq.sqrt() * delta);
+
+    *velocity *= factor;
 }

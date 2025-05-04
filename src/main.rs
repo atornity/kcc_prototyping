@@ -1,18 +1,14 @@
-use avian3d::{
-    PhysicsPlugins,
-    prelude::{Collider, PhysicsDebugPlugin, RigidBody},
-};
+use avian3d::{PhysicsPlugins, prelude::PhysicsDebugPlugin};
 use bevy::prelude::*;
-use bevy_enhanced_input::prelude::{ActionState, Actions};
-use input::{DefaultContext, InputPlugin, Jump};
+use bevy_enhanced_input::prelude::Actions;
+use input::{DefaultContext, InputPlugin};
 use level::LevelPlugin;
-use movement::{KCCBundle, KCCPlugin};
+use movement::{Character, KCCPlugin};
+
 mod input;
 mod level;
-mod movement;
 
-#[derive(Component)]
-struct KCCMarker;
+mod movement;
 
 #[derive(Component)]
 struct DefaultCamera;
@@ -36,15 +32,15 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Transform::from_xyz(0.0, 3.5, 0.0),
         Actions::<DefaultContext>::default(),
-        KCCBundle::default(),
+        Character::default(),
         children![(
             Camera3d::default(),
             Projection::Perspective(PerspectiveProjection {
-                fov: 75.0_f32.to_radians(),
+                fov: 90.0_f32.to_radians(),
                 ..Default::default()
             }),
             DefaultCamera,
-            Transform::from_xyz(0.0, 0.75, 0.0)
+            Transform::from_xyz(0.0, 0.5, 0.0)
         )],
     ));
 }

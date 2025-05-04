@@ -1,7 +1,7 @@
 use bevy::{prelude::*, window::CursorGrabMode};
 use bevy_enhanced_input::prelude::*;
 
-use crate::{DefaultCamera, KCCMarker};
+use crate::{DefaultCamera, movement::Character};
 
 pub(crate) struct InputPlugin;
 
@@ -72,13 +72,16 @@ fn binding(
     actions.bind::<CaptureCursor>().to(MouseButton::Left);
     actions.bind::<ReleaseCursor>().to(KeyCode::Escape);
 
-    actions.bind::<Jump>().to(KeyCode::Space);
+    actions
+        .bind::<Jump>()
+        .to(KeyCode::Space)
+        .with_conditions(JustPress::default());
 }
 
 fn rotate(
     trigger: Trigger<Fired<Rotate>>,
     mut cameras: Query<&mut Transform, (With<DefaultCamera>)>,
-    mut players: Query<&mut Transform, (With<KCCMarker>, Without<DefaultCamera>)>,
+    mut players: Query<&mut Transform, (With<Character>, Without<DefaultCamera>)>,
     time: Res<Time>,
 ) {
     // Delta
