@@ -1,5 +1,6 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
+const SIMILARITY_THRESHOLD: f32 = 0.999;
 
 #[must_use]
 pub fn character_sweep(
@@ -103,4 +104,82 @@ pub fn move_and_slide(
             break;
         }
     }
+}
+
+fn similar_plane(normal1: Vec3, normal2: Vec3) -> bool {
+    normal1.dot(normal2) > SIMILARITY_THRESHOLD
+}
+
+fn solve_collision_planes(
+    velocity: Vec3,
+    hits: &[Vec3],
+    original_velocity_direction: Vec3,
+) -> Vec3 {
+    // Early out if we have no velocity or no hits
+    if velocity.length_squared() <= 0.0 || original_velocity_direction.length_squared() <= 0.0 {
+        return Vec3::ZERO;
+    }
+
+    if hits.is_empty() {
+        return velocity;
+    }
+
+    // Do our initial rejection to calculate the sliding velocity.
+    let first_hit_normal = hits[hits.len() - 1];
+    if velocity.dot(first_hit_normal) >= 0.0 {
+        return velocity;
+    }
+    let initial_velocity = velocity.reject_from(first_hit_normal);
+
+    // Join the original velocity direction as an additional constraining plane
+    let original_velocity_normal = original_velocity_direction.normalize_or_zero();
+    let all_hits: Vec<Vec3> = std::iter::once(original_velocity_normal)
+        .chain(hits.iter().cloned())
+        .collect();
+
+    // We should filter out any normals that are similar to the existing constraints
+    let mut filtered_hits = all_hits.iter().filter(|&n| {
+        !similar_plane(first_hit_normal, *n) && !similar_plane(original_velocity_normal, *n)
+    });
+
+    filtered_hits.try_fold(initial_velocity, |vel, second_hit_normal| {
+        let vel = vel.reject_from(*second_hit_normal);
+        let vel_dir = vel.normalize_or_zero();
+
+        // If the velocity is already parallel to the first hit normal, we can return it directly
+        if similar_plane(vel_dir, first_hit_normal) {
+            // If the velocity is small enough we can just assume we have no reason to move
+            if vel.length_squared() <= f32::EPSILON {
+                Err(vel)
+            } else {
+                // Otherwise we need to keep working.
+                Ok(vel)
+            }
+        } else {
+            // If we have a valid second hit normal, we can calculate the crease direction
+            let crease_dir = first_hit_normal.cross(*second_hit_normal).normalize_or_zero();
+            let vel_proj = vel.project_onto(crease_dir);
+            let vel_proj_dir = vel_proj.normalize_or_zero();
+
+            // Check if the velocity projection is a corner case
+            // A corner case is when the velocity projection is not similar to either of the hit normals
+            // but is similar to the crease direction formed by the two hit normals.
+            let is_corner = all_hits.iter().any(|third_hit_normal| {
+                !similar_plane(first_hit_normal, *third_hit_normal) &&
+                !similar_plane(*second_hit_normal, *third_hit_normal) &&
+                similar_plane(vel_proj_dir, *third_hit_normal)
+            });
+
+            // If we are in a corner case we return a zero vector
+            if is_corner {
+                Err(Vec3::ZERO)
+            } else if vel_proj.length_squared() <= f32::EPSILON {
+                // Otherwise we can return the velocity if we have a small enough projection
+                Err(vel_proj)
+            } else {
+                // Otherwise lets keep working with the projection
+                Ok(vel_proj)
+            }
+        }
+    }).unwrap_or_else(|vel| vel)
 }
