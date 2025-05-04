@@ -156,13 +156,14 @@ fn movement(
                 collider,
                 config.epsilon,
                 transform.translation,
-                -character.up * 10.0, // arbitrary trace distance
+                -character.up,
+                10.0, // arbitrary trace distance
                 rotation,
                 &spatial_query,
                 &filter,
             ) {
                 if is_walkable(hit) {
-                    transform.translation += movement; // also snap to the floor
+                    transform.translation -= character.up * movement; // also snap to the floor
                     floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
             }
