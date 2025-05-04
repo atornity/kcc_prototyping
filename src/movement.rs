@@ -60,9 +60,8 @@ fn movement(
     spatial_query: SpatialQuery,
 ) {
     for (entity, mut transform, mut character, collider, layers) in &mut q_kcc {
-        // FIXME: this fires every frame [space] is held down, it should only trigger when initially pressed
         if q_input.action::<Jump>().state() == ActionState::Fired {
-            println!("Jump action fired!");
+            println!("Jumping!");
             if character.floor.is_some() {
                 let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
                 character.velocity += impulse;

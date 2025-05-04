@@ -72,7 +72,10 @@ fn binding(
     actions.bind::<CaptureCursor>().to(MouseButton::Left);
     actions.bind::<ReleaseCursor>().to(KeyCode::Escape);
 
-    actions.bind::<Jump>().to(KeyCode::Space);
+    actions
+        .bind::<Jump>()
+        .to(KeyCode::Space)
+        .with_conditions(JustPress::default());
 }
 
 fn rotate(
