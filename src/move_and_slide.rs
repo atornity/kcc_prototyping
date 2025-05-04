@@ -101,8 +101,8 @@ pub fn move_and_slide(
     }
 }
 
-fn similar_plane(a: Vec3, b: Vec3) -> bool {
-    a.dot(b) > SIMILARITY_THRESHOLD
+fn similar_plane(normal1: Vec3, normal2: Vec3) -> bool {
+    normal1.dot(normal2) > SIMILARITY_THRESHOLD
 }
 
 fn solve_collision_planes(
