@@ -66,28 +66,30 @@ pub fn move_and_slide(
     };
 
     for _ in 0..config.max_iterations {
+        let motion = *velocity * delta_time;
+
         let Some((safe_movement, hit)) = character_sweep(
             collider,
             config.epsilon,
             *translation,
-            *velocity * delta_time,
+            motion,
             rotation,
             spatial_query,
             filter,
         ) else {
             // No collision, move the full remaining distance
-            *translation += *velocity * delta_time;
+            *translation += motion;
             break;
         };
+
+        // Trigger callbacks
+        on_hit(hit);
 
         // Move the transform to just before the point of collision
         *translation += safe_movement;
 
         // Project velocity and remaining motion onto the surface plane
         *velocity = velocity.reject_from(hit.normal1);
-
-        // Trigger callbacks
-        on_hit(hit);
 
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
         if velocity.dot(*original_direction) <= 0.0 {
