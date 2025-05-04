@@ -121,8 +121,7 @@ fn solve_collision_planes(
 
     // Do our initial rejection to calculate the sliding velocity.
     let first_hit_normal = hits[hits.len() - 1];
-    let velocity_direction = velocity.normalize_or_zero();
-    if velocity_direction.dot(first_hit_normal) >= 0.0 {
+    if velocity.dot(first_hit_normal) >= 0.0 {
         return velocity;
     }
     let initial_velocity = velocity.reject_from(first_hit_normal);
@@ -147,8 +146,8 @@ fn solve_collision_planes(
             // If the velocity is small enough we can just assume we have no reason to move
             if vel.length_squared() <= f32::EPSILON {
                 Err(vel)
-                // Otherwise we need to keep working.
             } else {
+                // Otherwise we need to keep working.
                 Ok(vel)
             }
         } else {
@@ -169,8 +168,8 @@ fn solve_collision_planes(
             // If we are in a corner case we return a zero vector
             if is_corner {
                 Err(Vec3::ZERO)
-                // Otherwise we can return the velocity if we have a small enough projection
             } else if vel_proj.length_squared() <= f32::EPSILON {
+                // Otherwise we can return the velocity if we have a small enough projection
                 Err(vel_proj)
             } else {
                 // Otherwise lets keep working with the projection
