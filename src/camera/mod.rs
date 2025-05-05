@@ -3,7 +3,7 @@ pub mod fps_camera;
 pub mod orbit_camera;
 
 use crate::{
-    input::ToggleCameraMode,
+    input::{FlyCameraContext, OrbitCameraContext, ToggleCameraMode},
     movement::{Character, Frozen},
 };
 use bevy::prelude::*;
@@ -62,6 +62,8 @@ fn cycle_camera_modes(
     mut commands: Commands,
 ) {
     let (mut main_cam, main_cam_entity) = main_camera.into_inner();
+    let player_entity = player.into_inner();
+
     match main_cam.mode {
         CameraMode::Fps => {
             commands
@@ -69,24 +71,37 @@ fn cycle_camera_modes(
                 .remove::<FpsCamera>()
                 .insert((OrbitCamera::default(), PreventBlindness::default()));
             main_cam.mode = CameraMode::Orbit;
+
+            commands
+                .entity(player_entity)
+                .insert(Actions::<OrbitCameraContext>::default());
         }
         CameraMode::Orbit => {
             // the player shouldn't be controllable while in fly-cam-mode
-            commands.entity(player.into_inner()).insert(Frozen);
+            commands.entity(player_entity).insert(Frozen);
             commands
                 .entity(main_cam_entity)
                 .remove::<OrbitCamera>()
                 .insert(FlyCamera::default());
             main_cam.mode = CameraMode::Fly;
+
+            commands
+                .entity(player_entity)
+                .remove::<Actions<OrbitCameraContext>>()
+                .insert(Actions::<FlyCameraContext>::default());
         }
         CameraMode::Fly => {
             // allow for player movement once in fps-mode
-            commands.entity(player.into_inner()).remove::<Frozen>();
+            commands.entity(player_entity).remove::<Frozen>();
             commands
                 .entity(main_cam_entity)
                 .remove::<FlyCamera>()
                 .insert(FpsCamera);
             main_cam.mode = CameraMode::Fps;
+
+            commands
+                .entity(player_entity)
+                .remove::<Actions<FlyCameraContext>>();
         }
     }
 }

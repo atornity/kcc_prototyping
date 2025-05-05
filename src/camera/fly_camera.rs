@@ -1,4 +1,4 @@
-use crate::input::{self, Look};
+use crate::input::{self, FlyVerticalMoveDown, FlyVerticalMoveUp, Look};
 use bevy::{input::gamepad::GamepadInput, prelude::*};
 use bevy_enhanced_input::prelude::*;
 use std::f32::consts::FRAC_PI_2;
@@ -11,8 +11,8 @@ impl Plugin for FlyCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(look)
             .add_observer(fly)
-            .add_systems(Update, vertical_fly);
-        // .add_observer(vertical_fly);
+            .add_observer(vertical_fly_up)
+            .add_observer(vertical_fly_down);
     }
 }
 
@@ -37,28 +37,26 @@ fn fly(
     transform.translation += direction * cam.speed * time.delta_secs();
 }
 
-fn vertical_fly(
-    // trigger: Trigger<Fired<VerticalMove>>,
+fn vertical_fly_up(
+    _trigger: Trigger<Fired<FlyVerticalMoveUp>>,
     camera: Single<(&mut Transform, &FlyCamera)>,
-    // TODO: use bevy_enhanced_input
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    gamepad: Single<&Gamepad>,
     time: Res<Time>,
 ) {
     let mut direction = 0.0;
-    if keyboard_input.pressed(KeyCode::Space) {
-        direction += 1.0;
-    }
-    if keyboard_input.pressed(KeyCode::ControlLeft) {
-        direction -= 1.0;
-    }
-    let gamepad = gamepad.into_inner();
-    if gamepad.pressed(GamepadButton::East) {
-        direction += 1.0;
-    }
-    if gamepad.pressed(GamepadButton::LeftThumb) {
-        direction -= 1.0;
-    }
+    direction += 1.0;
+
+    let (mut transform, cam) = camera.into_inner();
+    transform.translation.y += direction * cam.speed * time.delta_secs();
+}
+
+fn vertical_fly_down(
+    _trigger: Trigger<Fired<FlyVerticalMoveDown>>,
+    camera: Single<(&mut Transform, &FlyCamera)>,
+    time: Res<Time>,
+) {
+    let mut direction = 0.0;
+    direction -= 1.0;
+
     let (mut transform, cam) = camera.into_inner();
     transform.translation.y += direction * cam.speed * time.delta_secs();
 }

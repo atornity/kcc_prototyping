@@ -1,5 +1,5 @@
 use super::{MainCamera, TargetOf};
-use crate::input::{DefaultContext, Look};
+use crate::input::{DefaultContext, Look, OrbitCameraContext, OrbitZoom};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
@@ -9,17 +9,17 @@ pub struct OrbitCameraPlugin;
 
 impl Plugin for OrbitCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_input_context::<OrbitCamera>()
-            .add_systems(
-                Update,
-                (update_orbit_angles, orbit, prevent_blindness).chain(),
-            )
-            .add_systems(FixedPostUpdate, update_orbit_center);
+        app.add_systems(
+            Update,
+            (update_orbit_angles, orbit, prevent_blindness).chain(),
+        )
+        .add_systems(FixedPostUpdate, update_orbit_center)
+        .add_observer(update_orbit_radius);
     }
 }
 
 #[derive(Component, InputContext)]
-#[require(Camera3d, Actions<OrbitCamera>, OrbitCenter, OrbitAngles)]
+#[require(Camera3d, OrbitCenter, OrbitAngles)]
 pub struct OrbitCamera {
     pub orbit_radius: f32,
     pub orbit_speed: f32,
@@ -68,6 +68,20 @@ fn update_orbit_center(
         if let Ok(mut orbit_center) = cameras.get_mut(target_of.0) {
             orbit_center.0 = target_transform.translation;
         }
+    }
+}
+
+fn update_orbit_radius(
+    _trigger: Trigger<Fired<OrbitZoom>>,
+    mut cameras: Query<(&mut OrbitCamera, &OrbitCenter, &OrbitAngles)>,
+    actions: Single<&Actions<OrbitCameraContext>>,
+) {
+    let actions = actions.into_inner();
+    for (mut camera, center, angles) in &mut cameras {
+        let zoom_input = actions.action::<OrbitZoom>().value().as_axis2d();
+        let zoom_delta = zoom_input.y * camera.orbit_radius * 0.1;
+        camera.orbit_radius -= zoom_delta;
+        camera.orbit_radius = camera.orbit_radius.clamp(0.1, 100.0);
     }
 }
 
