@@ -123,20 +123,22 @@ fn prevent_blindness(
 ) {
     for (target_entity, target_transform, target_of) in &targets {
         if let Ok((mut camera_transform, pb)) = cameras.get_mut(target_of.0) {
-            let direction = camera_transform.translation - target_transform.translation;
-            let distance = direction.length();
+            let Ok((direction, distance)) =
+                Dir3::new_and_length(camera_transform.translation - target_transform.translation)
+            else {
+                return;
+            };
 
             // prevent crash in Dir3::new_unchecked
             if distance == 0.0 {
                 return;
             }
 
-            let direction = direction / distance;
             if let Some(hit) = spatial_query.cast_shape(
                 &pb.camera_collider,
                 target_transform.translation,
                 target_transform.rotation,
-                Dir3::new_unchecked(direction),
+                direction,
                 &ShapeCastConfig {
                     max_distance: distance,
                     ..Default::default()
