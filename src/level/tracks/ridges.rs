@@ -20,7 +20,7 @@ impl Plugin for RidgesTrackPlugin {
 // --- Constants ---
 const TRACK_NAME: &str = "Ridges";
 const TRACK_Z: f32 = -60.0; // Place this track further back
-const TEX_RIDGE: usize = 6 * 13; // Example texture
+const TEX_RIDGE: usize = 2 * 13 + 3; // Example texture
 const RIDGE_PLANE_WIDTH: f32 = 3.0;
 const RIDGE_THICKNESS: f32 = 0.2;
 

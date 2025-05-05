@@ -20,7 +20,7 @@ impl Plugin for RampsTrackPlugin {
 // --- Constants ---
 const TRACK_NAME: &str = "Ramps";
 const TRACK_Z: f32 = 0.0;
-const TEX_RAMP: usize = 5 * 13;
+const TEX_RAMP: usize = 4 * 13 + 7;
 const WIDTH: f32 = 4.0; // Keep width constant for ramps in this example
 const THICKNESS: f32 = 0.2;
 
@@ -37,8 +37,8 @@ const PARAMS: &[(&str, Param)] = &[
     (
         "angle",
         Param::Float {
-            start: 10.0,
-            end: 50.0,
+            start: 5.0,
+            end: 80.0,
             step: 15.0,
         },
     ), // Angle in degrees
