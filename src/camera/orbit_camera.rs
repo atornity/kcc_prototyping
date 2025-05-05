@@ -129,11 +129,6 @@ fn prevent_blindness(
                 return;
             };
 
-            // prevent crash in Dir3::new_unchecked
-            if distance == 0.0 {
-                return;
-            }
-
             if let Some(hit) = spatial_query.cast_shape(
                 &pb.camera_collider,
                 target_transform.translation,
