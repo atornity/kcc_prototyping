@@ -42,11 +42,8 @@ fn vertical_fly_up(
     camera: Single<(&mut Transform, &FlyCamera)>,
     time: Res<Time>,
 ) {
-    let mut direction = 0.0;
-    direction += 1.0;
-
     let (mut transform, cam) = camera.into_inner();
-    transform.translation.y += direction * cam.speed * time.delta_secs();
+    transform.translation.y += cam.speed * time.delta_secs();
 }
 
 fn vertical_fly_down(
