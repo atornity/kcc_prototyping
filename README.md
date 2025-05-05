@@ -3,10 +3,10 @@ a minimal environment for prototyping KCCs with procedural and customizable 'lev
 ### Input Bindings
 
 #### General (DefaultContext)
-- **Toggle Camera Mode**: `F1` or gamepad `D-Pad Up` (just pressed)
+- **Toggle Camera Mode**: `F1` or gamepad `D-Pad Up`
 - **Move**: `WASD` or gamepad left stick
-- **Look**: Mouse motion (scaled & inverted) or gamepad right stick (X inverted)
-- **Jump**: `Space` or gamepad `East` (just pressed)
+- **Look**: Mouse motion or gamepad right stick
+- **Jump**: `Space` or gamepad `East`
 - **Capture Cursor**: Left mouse button
 - **Release Cursor**: `Escape`
 
