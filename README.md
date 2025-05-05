@@ -25,5 +25,6 @@ const PARAMS: &[(&str, Param)] = &[
 ];
 ```
 
-https://github.com/user-attachments/assets/d597a032-2efd-4788-bd83-89244e34def0
+
+https://github.com/user-attachments/assets/c7c6b18d-d8bb-4e1a-9605-4be2c293b31b
 
