@@ -61,7 +61,6 @@ fn movement(
 ) {
     for (entity, mut transform, mut character, collider, layers) in &mut q_kcc {
         if q_input.action::<Jump>().state() == ActionState::Fired {
-            println!("Jumping!");
             if character.floor.is_some() {
                 let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
                 character.velocity += impulse;

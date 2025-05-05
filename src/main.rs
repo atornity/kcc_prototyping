@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_enhanced_input::prelude::Actions;
 use input::{DefaultContext, InputPlugin};
-use level::LevelPlugin;
+use level::LevelGeneratorPlugin;
 use movement::{Character, KCCPlugin};
 
 mod input;
@@ -24,7 +24,7 @@ fn main() {
         InputPlugin,
         PhysicsPlugins::default(),
         PhysicsDebugPlugin::default(),
-        LevelPlugin,
+        LevelGeneratorPlugin,
         KCCPlugin,
     ));
     app.add_systems(Startup, setup);
@@ -34,7 +34,7 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     commands.spawn((
-        Transform::from_xyz(0.0, 3.5, 0.0),
+        Transform::from_xyz(0.0, 10.5, 0.0),
         Actions::<DefaultContext>::default(),
         Character::default(),
         children![(
