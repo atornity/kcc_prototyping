@@ -1,5 +1,6 @@
-a minimal environment for prototyping KCCs with procedural and customizable 'level' elements.
 # KCC-Prototype
+A minimal environment for prototyping KCCs with procedural and customizable 'level' elements.
+
 ### Input Bindings
 
 #### General (DefaultContext)
