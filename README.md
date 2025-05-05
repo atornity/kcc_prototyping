@@ -1,5 +1,22 @@
 a minimal environment for prototyping KCCs with procedural and customizable 'level' elements.
 # KCC-Prototype
+### Input Bindings
+
+#### General (DefaultContext)
+- **Toggle Camera Mode**: `F1` or gamepad `D-Pad Up` (just pressed)
+- **Move**: `WASD` or gamepad left stick
+- **Look**: Mouse motion (scaled & inverted) or gamepad right stick (X inverted)
+- **Jump**: `Space` or gamepad `East` (just pressed)
+- **Capture Cursor**: Left mouse button
+- **Release Cursor**: `Escape`
+
+#### Fly Camera (FlyCameraContext)
+- **Fly Up**: `Left Shift` or gamepad `East`
+- **Fly Down**: `Left Ctrl` or gamepad `Left Thumb`
+
+#### Orbit Camera (OrbitCameraContext)
+- **Zoom**: Mouse wheel
+
 ### Notes
 - The environment elements are procedural and defined via constants (with PARAMS) in the corresponding plugin files.
 `Params` define ranges of values, for which all permutations are generated and spawned in the level.

@@ -5,9 +5,12 @@ use avian3d::prelude::{
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
-use kcc_prototype::move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide};
 
-use crate::input::{DefaultContext, Jump, Move};
+use crate::{
+    camera::MainCamera,
+    input::{self, DefaultContext, Jump},
+    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
+};
 
 pub struct KCCPlugin;
 
@@ -38,6 +41,11 @@ impl Default for Character {
     }
 }
 
+// Marker component used to freeze player movement when the main camera is in fly-mode.
+// This shouldn't be strictly necessary if we figure out how to properly layer InputContexts.
+#[derive(Component)]
+pub struct Frozen;
+
 const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
 const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
 const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
@@ -47,20 +55,25 @@ const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
 fn movement(
-    mut q_kcc: Query<(
-        Entity,
-        &mut Transform,
-        &mut Character,
-        &Collider,
-        &CollisionLayers,
-    )>,
-    q_input: Single<&Actions<DefaultContext>>,
+    mut q_kcc: Query<
+        (
+            Entity,
+            &Actions<DefaultContext>,
+            &mut Transform,
+            &mut Character,
+            &Collider,
+            &CollisionLayers,
+        ),
+        Without<Frozen>,
+    >,
+    main_camera: Single<&Transform, (With<MainCamera>, Without<Character>)>,
     sensors: Query<Entity, With<Sensor>>,
     time: Res<Time>,
     spatial_query: SpatialQuery,
 ) {
-    for (entity, mut transform, mut character, collider, layers) in &mut q_kcc {
-        if q_input.action::<Jump>().state() == ActionState::Fired {
+    let main_camera_transform = main_camera.into_inner();
+    for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
+        if actions.action::<Jump>().state() == ActionState::Fired {
             if character.floor.is_some() {
                 let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
                 character.velocity += impulse;
@@ -69,11 +82,11 @@ fn movement(
         }
 
         // Get the raw 2D input vector
-        let input_vec = q_input.action::<Move>().value().as_axis2d();
+        let input_vec = actions.action::<input::Move>().value().as_axis2d();
 
         // Rotate the movement direction vector by the camera's yaw
         let mut direction =
-            (transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y)).normalize_or_zero();
+            main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
         let max_acceleration = match character.floor {
             Some(floor_normal) => {
