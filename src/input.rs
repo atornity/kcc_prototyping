@@ -1,3 +1,4 @@
+use bevy::math::FloatPow;
 use bevy::prelude::*;
 use bevy::time::Virtual;
 use bevy::window::{CursorGrabMode, Window};
@@ -108,10 +109,13 @@ fn bind_default_context_actions(
             .with_conditions(JustPress::default());
 
         // --- Camera Look (Used by FPS, potentially others if not overridden) ---
-        actions.bind::<Look>().to((
-            Input::mouse_motion().with_modifiers((Scale::splat(0.05), Negate::all())),
-            Axial::right_stick().with_modifiers_each(Negate::x()),
-        ));
+        actions
+            .bind::<Look>()
+            .to((
+                Input::mouse_motion().with_modifiers((Scale::splat(0.05), Negate::all())),
+                Axial::right_stick().with_modifiers_each(Negate::x()),
+            ))
+            .with_modifiers(AtLeast(0.2));
 
         // --- Global Actions ---
         actions
@@ -192,5 +196,52 @@ fn release_cursor(
     if let Ok(mut window) = windows.get_single_mut() {
         window.cursor_options.grab_mode = CursorGrabMode::None;
         window.cursor_options.visible = true;
+    }
+}
+
+// Helper
+// InputModifier that sets the value of an input to 0.0 if a threshold is not reached
+// Used to prevent stick drift in (Nintendo) controllers
+#[derive(Debug)]
+struct AtLeast(pub f32);
+
+impl Default for AtLeast {
+    fn default() -> Self {
+        Self(0.2)
+    }
+}
+
+impl InputModifier for AtLeast {
+    fn apply(
+        &mut self,
+        _: &bevy_enhanced_input::action_map::ActionMap,
+        _: &Time<Virtual>,
+        value: ActionValue,
+    ) -> ActionValue {
+        // TODO: don't do this
+        match value {
+            ActionValue::Bool(bool) => ActionValue::Bool(bool),
+            ActionValue::Axis1D(vec1) => {
+                if vec1 < self.0 {
+                    ActionValue::Axis1D(0.0)
+                } else {
+                    ActionValue::Axis1D(vec1)
+                }
+            }
+            ActionValue::Axis2D(vec2) => {
+                if vec2.length_squared() < self.0.squared() {
+                    ActionValue::Axis2D(Vec2::splat(0.0))
+                } else {
+                    ActionValue::Axis2D(vec2)
+                }
+            }
+            ActionValue::Axis3D(vec3) => {
+                if vec3.length_squared() < self.0.squared() {
+                    ActionValue::Axis3D(Vec3::splat(0.0))
+                } else {
+                    ActionValue::Axis3D(vec3)
+                }
+            }
+        }
     }
 }
