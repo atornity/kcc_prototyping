@@ -145,11 +145,11 @@ fn movement(
 
         let mut floor = None;
 
-        move_and_slide(
+        if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
             collider,
-            &mut transform.translation,
-            &mut character.velocity,
+            transform.translation,
+            character.velocity,
             rotation,
             config,
             &filter,
@@ -159,7 +159,10 @@ fn movement(
                     floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
             },
-        );
+        ) {
+            transform.translation = move_and_slide_result.new_translation;
+            character.velocity = move_and_slide_result.new_velocity;
+        }
 
         // Check for floor when previously on the floor and no floor was found during move and slide
         // to avoid rapid changes to the grounded state

@@ -49,35 +49,43 @@ impl Default for MoveAndSlideConfig {
     }
 }
 
+pub struct MoveAndSlideResult {
+    pub new_translation: Vec3,
+    pub new_velocity: Vec3,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     spatial_query: &SpatialQuery,
     collider: &Collider,
-    translation: &mut Vec3,
-    velocity: &mut Vec3,
+    translation: Vec3,
+    velocity: Vec3,
     rotation: Quat,
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
     delta_time: f32,
     mut on_hit: impl FnMut(ShapeHitData),
-) {
-    let Ok(original_direction) = Dir3::new(*velocity) else {
-        return;
+) -> Option<MoveAndSlideResult> {
+    let Ok(original_direction) = Dir3::new(velocity) else {
+        return None;
     };
+
+    let mut translation = translation;
+    let mut velocity = velocity;
 
     let mut remaining_time = delta_time;
 
     let mut hits = Vec::with_capacity(config.max_iterations);
 
     for _ in 0..config.max_iterations {
-        let Ok((direction, max_distance)) = Dir3::new_and_length(*velocity * remaining_time) else {
+        let Ok((direction, max_distance)) = Dir3::new_and_length(velocity * remaining_time) else {
             break;
         };
 
         let Some((safe_movement, hit)) = character_sweep(
             collider,
             config.epsilon,
-            *translation,
+            translation,
             direction,
             max_distance,
             rotation,
@@ -85,7 +93,7 @@ pub fn move_and_slide(
             filter,
         ) else {
             // No collision, move the full remaining distance
-            *translation += direction * max_distance;
+            translation += direction * max_distance;
             break;
         };
 
@@ -98,16 +106,21 @@ pub fn move_and_slide(
         remaining_time *= 1.0 - safe_movement / max_distance;
 
         // Move the transform to just before the point of collision
-        *translation += direction * safe_movement;
+        translation += direction * safe_movement;
 
         // Project velocity and remaining motion onto the surface plane
-        *velocity = solve_collision_planes(*velocity, &hits, *original_direction);
+        velocity = solve_collision_planes(velocity, &hits, *original_direction);
 
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
         if velocity.dot(*original_direction) <= 0.0 {
             break;
         }
     }
+
+    Some(MoveAndSlideResult {
+        new_translation: translation,
+        new_velocity: velocity,
+    })
 }
 
 fn similar_plane(normal1: Vec3, normal2: Vec3) -> bool {
@@ -146,44 +159,48 @@ fn solve_collision_planes(
         !similar_plane(first_hit_normal, *n) && !similar_plane(original_velocity_normal, *n)
     });
 
-    filtered_hits.try_fold(initial_velocity, |vel, second_hit_normal| {
-        let vel = vel.reject_from(*second_hit_normal);
-        let vel_dir = vel.normalize_or_zero();
+    filtered_hits
+        .try_fold(initial_velocity, |vel, second_hit_normal| {
+            let vel = vel.reject_from(*second_hit_normal);
+            let vel_dir = vel.normalize_or_zero();
 
-        // If the velocity is already parallel to the first hit normal, we can return it directly
-        if similar_plane(vel_dir, first_hit_normal) {
-            // If the velocity is small enough we can just assume we have no reason to move
-            if vel.length_squared() <= f32::EPSILON {
-                Err(vel)
+            // If the velocity is already parallel to the first hit normal, we can return it directly
+            if similar_plane(vel_dir, first_hit_normal) {
+                // If the velocity is small enough we can just assume we have no reason to move
+                if vel.length_squared() <= f32::EPSILON {
+                    Err(vel)
+                } else {
+                    // Otherwise we need to keep working.
+                    Ok(vel)
+                }
             } else {
-                // Otherwise we need to keep working.
-                Ok(vel)
-            }
-        } else {
-            // If we have a valid second hit normal, we can calculate the crease direction
-            let crease_dir = first_hit_normal.cross(*second_hit_normal).normalize_or_zero();
-            let vel_proj = vel.project_onto(crease_dir);
-            let vel_proj_dir = vel_proj.normalize_or_zero();
+                // If we have a valid second hit normal, we can calculate the crease direction
+                let crease_dir = first_hit_normal
+                    .cross(*second_hit_normal)
+                    .normalize_or_zero();
+                let vel_proj = vel.project_onto(crease_dir);
+                let vel_proj_dir = vel_proj.normalize_or_zero();
 
-            // Check if the velocity projection is a corner case
-            // A corner case is when the velocity projection is not similar to either of the hit normals
-            // but is similar to the crease direction formed by the two hit normals.
-            let is_corner = all_hits.iter().any(|third_hit_normal| {
-                !similar_plane(first_hit_normal, *third_hit_normal) &&
-                !similar_plane(*second_hit_normal, *third_hit_normal) &&
-                similar_plane(vel_proj_dir, *third_hit_normal)
-            });
+                // Check if the velocity projection is a corner case
+                // A corner case is when the velocity projection is not similar to either of the hit normals
+                // but is similar to the crease direction formed by the two hit normals.
+                let is_corner = all_hits.iter().any(|third_hit_normal| {
+                    !similar_plane(first_hit_normal, *third_hit_normal)
+                        && !similar_plane(*second_hit_normal, *third_hit_normal)
+                        && similar_plane(vel_proj_dir, *third_hit_normal)
+                });
 
-            // If we are in a corner case we return a zero vector
-            if is_corner {
-                Err(Vec3::ZERO)
-            } else if vel_proj.length_squared() <= f32::EPSILON {
-                // Otherwise we can return the velocity if we have a small enough projection
-                Err(vel_proj)
-            } else {
-                // Otherwise lets keep working with the projection
-                Ok(vel_proj)
+                // If we are in a corner case we return a zero vector
+                if is_corner {
+                    Err(Vec3::ZERO)
+                } else if vel_proj.length_squared() <= f32::EPSILON {
+                    // Otherwise we can return the velocity if we have a small enough projection
+                    Err(vel_proj)
+                } else {
+                    // Otherwise lets keep working with the projection
+                    Ok(vel_proj)
+                }
             }
-        }
-    }).unwrap_or_else(|vel| vel)
+        })
+        .unwrap_or_else(|vel| vel)
 }
