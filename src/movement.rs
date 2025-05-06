@@ -191,6 +191,7 @@ fn movement(
 }
 
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
+#[must_use]
 fn acceleration(
     velocity: Vec3,
     direction: impl TryInto<Dir3>,
@@ -217,6 +218,7 @@ fn acceleration(
 }
 
 /// Constant acceleration in the opposite direction of velocity.
+#[must_use]
 pub fn friction(velocity: Vec3, friction: f32, delta: f32) -> Vec3 {
     let speed_sq = velocity.length_squared();
 
