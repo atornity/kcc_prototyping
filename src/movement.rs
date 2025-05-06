@@ -90,7 +90,11 @@ fn movement(
 
         let max_acceleration = match character.floor {
             Some(floor_normal) => {
-                apply_friction(&mut character.velocity, EXAMPLE_FRICTION, time.delta_secs());
+                if let Some(apply_friction_result) =
+                    apply_friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs())
+                {
+                    character.velocity = apply_friction_result.new_velocity;
+                }
 
                 // Make sure velocity is never towards the floor since this makes the jump height inconsistent
                 let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
@@ -115,13 +119,15 @@ fn movement(
         };
 
         // accelerate in the movement direction
-        accelerate(
-            &mut character.velocity,
+        if let Some(accelerate_result) = accelerate(
+            character.velocity,
             direction,
             max_acceleration,
             EXAMPLE_MOVEMENT_SPEED,
             time.delta_secs(),
-        );
+        ) {
+            character.velocity = accelerate_result.new_velocity;
+        }
 
         let rotation = transform.rotation;
 
@@ -188,16 +194,20 @@ fn movement(
     }
 }
 
+pub struct AccelerateResult {
+    pub new_velocity: Vec3,
+}
+
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
 fn accelerate(
-    velocity: &mut Vec3,
+    velocity: Vec3,
     direction: impl TryInto<Dir3>,
     max_acceleration: f32,
     target_speed: f32,
     delta: f32,
-) {
+) -> Option<AccelerateResult> {
     let Ok(direction) = direction.try_into() else {
-        return;
+        return None;
     };
 
     // Current speed in the desired direction.
@@ -205,24 +215,32 @@ fn accelerate(
 
     // No acceleration is needed if current speed exceeds target.
     if current_speed >= target_speed {
-        return;
+        return None;
     }
 
     // Clamp to avoid acceleration past the target speed.
     let accel_speed = f32::min(target_speed - current_speed, max_acceleration * delta);
 
-    *velocity += accel_speed * direction;
+    Some(AccelerateResult {
+        new_velocity: velocity + accel_speed * direction,
+    })
+}
+
+pub struct ApplyFrictionResult {
+    pub new_velocity: Vec3,
 }
 
 /// Constant acceleration in the opposite direction of velocity.
-pub fn apply_friction(velocity: &mut Vec3, friction: f32, delta: f32) {
+pub fn apply_friction(velocity: Vec3, friction: f32, delta: f32) -> Option<ApplyFrictionResult> {
     let speed_sq = velocity.length_squared();
 
     if speed_sq < 1e-4 {
-        return;
+        return None;
     }
 
     let factor = f32::exp(-friction / speed_sq.sqrt() * delta);
 
-    *velocity *= factor;
+    Some(ApplyFrictionResult {
+        new_velocity: velocity * factor,
+    })
 }

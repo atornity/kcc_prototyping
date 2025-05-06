@@ -54,6 +54,8 @@ pub struct MoveAndSlideResult {
     pub new_velocity: Vec3,
 }
 
+/// Pure function that returns new translation and velocity based on the current translation,
+/// velocity, and rotation.
 #[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     spatial_query: &SpatialQuery,
