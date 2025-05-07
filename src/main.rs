@@ -1,4 +1,7 @@
-use avian3d::{PhysicsPlugins, prelude::PhysicsDebugPlugin};
+use avian3d::{
+    PhysicsPlugins,
+    prelude::{PhysicsDebugPlugin, PhysicsDiagnosticsPlugin, PhysicsDiagnosticsUiPlugin},
+};
 use bevy::{
     pbr::{Atmosphere, light_consts::lux},
     prelude::*,
@@ -22,6 +25,8 @@ fn main() -> AppExit {
             PhysicsDebugPlugin::default(),
             LevelGeneratorPlugin,
             KCCPlugin,
+            PhysicsDiagnosticsPlugin,
+            PhysicsDiagnosticsUiPlugin,
         ))
         .add_systems(Startup, setup)
         .run()
