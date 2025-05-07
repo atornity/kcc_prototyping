@@ -1,11 +1,10 @@
 use avian3d::{PhysicsPlugins, prelude::PhysicsDebugPlugin};
 use bevy::{
-    ecs::entity_disabling::Disabled,
     pbr::{Atmosphere, light_consts::lux},
     prelude::*,
     render::camera::Exposure,
 };
-use bevy_enhanced_input::prelude::{Action, Actions};
+use bevy_enhanced_input::prelude::Actions;
 use kcc_prototype::{
     Attachments,
     camera::{CameraPlugin, MainCamera, orbit_camera::FollowOffset},
