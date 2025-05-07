@@ -4,21 +4,21 @@ pub mod orbit_camera;
 use std::f32::consts::PI;
 
 use crate::{
-    Attachments,
+    AttachedTo, Attachments,
     input::{DefaultContext, Look, ToggleFlyCam, ToggleViewPerspective},
     movement::Frozen,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 use fly_camera::{FlySpeed, FlyingCamera};
-use orbit_camera::{FirstPersonCamera, FollowOrigin, SpringArm};
+use orbit_camera::{FirstPersonCamera, SpringArm};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((fly_camera::plugin, orbit_camera::plugin));
-        app.add_systems(Update, view_input);
+        app.add_systems(Update, (view_input, update_origin).chain());
         app.add_observer(toggle_cam_perspective);
         app.add_observer(toggle_fly_cam);
     }
@@ -28,6 +28,7 @@ impl Plugin for CameraPlugin {
 #[require(Camera3d, Sensitivity, ViewAngles, FollowOrigin, SpringArm, FlySpeed)]
 pub struct MainCamera;
 
+/// The look sensitivity of a camera
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 pub(crate) struct Sensitivity(pub f32);
@@ -50,6 +51,20 @@ impl ViewAngles {
     pub fn to_quat(&self) -> Quat {
         Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, self.roll)
     }
+}
+
+/// The origin of an attached camera, corresponds to the translation of the [`AttachedTo`] entity + [`FollowOffset`]
+#[derive(Component, Reflect, Default, Debug, PartialEq, Clone, Copy)]
+#[reflect(Component)]
+#[require(FollowOffset)]
+pub(crate) struct FollowOrigin(pub Vec3);
+
+/// The offset of an attached camera
+#[derive(Component, Reflect, Default, Debug, Clone, Copy)]
+#[reflect(Component)]
+pub struct FollowOffset {
+    pub absolute: Vec3,
+    pub relative: Vec3,
 }
 
 fn toggle_cam_perspective(
@@ -117,4 +132,29 @@ pub(crate) fn view_input(
 
         transform.rotation = angles.to_quat();
     }
+}
+
+pub(crate) fn update_origin(
+    targets: Query<&GlobalTransform>,
+    mut cameras: Query<(
+        &mut FollowOrigin,
+        &mut Transform,
+        &ViewAngles,
+        &FollowOffset,
+        &AttachedTo,
+    )>,
+) -> Result {
+    for (mut origin, mut transform, angles, offset, attached_to) in &mut cameras {
+        let orbit_transform = targets.get(attached_to.0)?;
+
+        let mut point = orbit_transform.translation();
+
+        point += offset.absolute;
+        point += angles.to_quat() * offset.relative;
+
+        origin.0 = point;
+        transform.translation = point;
+    }
+
+    Ok(())
 }

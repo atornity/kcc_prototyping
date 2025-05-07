@@ -1,4 +1,4 @@
-use super::{Attachments, ViewAngles};
+use super::{Attachments, FollowOrigin};
 use crate::{
     AttachedTo,
     input::{OrbitCameraContext, OrbitZoom},
@@ -10,26 +10,10 @@ use bevy_enhanced_input::prelude::*;
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         Update,
-        (
-            update_origin.after(super::view_input),
-            zoom_input,
-            update_spring_arm,
-        )
-            .chain(),
+        (zoom_input, update_spring_arm)
+            .chain()
+            .after(super::update_origin),
     );
-}
-
-#[derive(Component, Reflect, Default, Debug, PartialEq, Clone, Copy)]
-#[reflect(Component)]
-#[require(FollowOffset)]
-pub(crate) struct FollowOrigin(pub Vec3);
-
-/// By default the center of orbit will be equal to the position of the target.
-#[derive(Component, Reflect, Default, Debug, Clone, Copy)]
-#[reflect(Component)]
-pub struct FollowOffset {
-    pub absolute: Vec3,
-    pub relative: Vec3,
 }
 
 #[derive(Component, Reflect, Debug, Clone, Copy)]
@@ -56,7 +40,7 @@ impl Default for SpringArm {
 
 #[derive(Component, Reflect, Default, Debug, Clone, Copy)]
 #[reflect(Component)]
-pub(crate) struct FirstPersonCamera;
+pub(crate) struct FirstPersonCamera; // Used for toggling the spring arm distance without removing it
 
 pub(crate) fn zoom_input(
     targets: Query<(&Actions<OrbitCameraContext>, &Attachments)>,
@@ -71,31 +55,6 @@ pub(crate) fn zoom_input(
             arm.distance -= zoom_delta;
             arm.distance = arm.distance.clamp(0.1, 100.0); // TODO: configurable range
         }
-    }
-
-    Ok(())
-}
-
-pub(crate) fn update_origin(
-    targets: Query<&GlobalTransform>,
-    mut cameras: Query<(
-        &mut FollowOrigin,
-        &mut Transform,
-        &ViewAngles,
-        &FollowOffset,
-        &AttachedTo,
-    )>,
-) -> Result {
-    for (mut origin, mut transform, angles, offset, attached_to) in &mut cameras {
-        let orbit_transform = targets.get(attached_to.0)?;
-
-        let mut point = orbit_transform.translation();
-
-        point += offset.absolute;
-        point += angles.to_quat() * offset.relative;
-
-        origin.0 = point;
-        transform.translation = point;
     }
 
     Ok(())

@@ -7,7 +7,7 @@ use bevy::{
 use bevy_enhanced_input::prelude::Actions;
 use kcc_prototype::{
     Attachments,
-    camera::{CameraPlugin, MainCamera, orbit_camera::FollowOffset},
+    camera::{CameraPlugin, FollowOffset, MainCamera},
     input::{DefaultContext, FlyCameraContext, InputPlugin, OrbitCameraContext},
     level::LevelGeneratorPlugin,
     movement::{Character, KCCPlugin},
