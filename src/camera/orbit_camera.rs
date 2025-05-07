@@ -1,148 +1,108 @@
-use super::{MainCamera, TargetOf};
-use crate::input::{DefaultContext, Look, OrbitCameraContext, OrbitZoom};
+use super::{Attachments, FollowOrigin};
+use crate::{
+    AttachedTo,
+    input::{OrbitCameraContext, OrbitZoom},
+};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use std::{f32::consts::PI, ops::Range};
 
-pub struct OrbitCameraPlugin;
-
-impl Plugin for OrbitCameraPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (update_orbit_angles, orbit, prevent_blindness).chain(),
-        )
-        .add_systems(FixedPostUpdate, update_orbit_center)
-        .add_observer(update_orbit_radius);
-    }
+pub(crate) fn plugin(app: &mut App) {
+    app.add_systems(
+        Update,
+        (zoom_input, update_spring_arm)
+            .chain()
+            .after(super::update_origin),
+    );
 }
 
-#[derive(Component, InputContext)]
-#[require(Camera3d, OrbitCenter, OrbitAngles)]
-pub struct OrbitCamera {
-    pub orbit_radius: f32,
-    pub orbit_speed: f32,
-    /// Must be in the range (-90°, 90°) to avoid glitchy quaternion math
-    pub pitch_constraint: Range<f32>,
+#[derive(Component, Reflect, Debug, Clone, Copy)]
+#[reflect(Component)]
+pub(crate) struct SpringArm {
+    pub distance: f32,
+    pub target_distance: f32,
+    pub recover_speed: f32,
+    pub collision_radius: f32,
+    pub filters: LayerMask,
 }
 
-impl Default for OrbitCamera {
+impl Default for SpringArm {
     fn default() -> Self {
         Self {
-            orbit_radius: 5.0,
-            orbit_speed: PI,
-            pitch_constraint: -15f32.to_radians()..89.9f32.to_radians(),
+            distance: 4.0,
+            target_distance: 4.0,
+            recover_speed: 6.0,
+            collision_radius: 0.2,
+            filters: LayerMask::ALL,
         }
     }
 }
 
-/// By default the center of orbit will be equal to the position of the target.
-#[derive(Default, Component)]
-pub struct OrbitCenter(Vec3);
+#[derive(Component, Reflect, Default, Debug, Clone, Copy)]
+#[reflect(Component)]
+pub(crate) struct FirstPersonCamera; // Used for toggling the spring arm distance without removing it
 
-#[derive(Default, Component)]
-pub struct OrbitAngles {
-    pub pitch: f32,
-    pub yaw: f32,
-}
+pub(crate) fn zoom_input(
+    targets: Query<(&Actions<OrbitCameraContext>, &Attachments)>,
+    mut cameras: Query<&mut SpringArm>,
+) -> Result {
+    for (actions, owned_cameras) in &targets {
+        let mut iter = cameras.iter_many_mut(owned_cameras.iter());
+        while let Some(mut arm) = iter.fetch_next() {
+            let zoom_input = actions.action::<OrbitZoom>().value().as_axis2d();
+            let zoom_delta = zoom_input.y * arm.distance * 0.1; // TODO: configurable speed
 
-#[derive(Component)]
-pub struct PreventBlindness {
-    camera_collider: Collider,
-}
-
-impl Default for PreventBlindness {
-    fn default() -> Self {
-        Self {
-            camera_collider: Collider::sphere(0.25),
+            arm.target_distance -= zoom_delta;
+            arm.target_distance = arm.target_distance.clamp(0.1, 100.0); // TODO: configurable range
         }
     }
+
+    Ok(())
 }
 
-fn update_orbit_center(
-    targets: Query<(&Transform, &TargetOf)>,
-    mut cameras: Query<&mut OrbitCenter>,
-) {
-    for (target_transform, target_of) in &targets {
-        if let Ok(mut orbit_center) = cameras.get_mut(target_of.0) {
-            orbit_center.0 = target_transform.translation;
-        }
-    }
-}
-
-fn update_orbit_radius(
-    _trigger: Trigger<Fired<OrbitZoom>>,
-    mut cameras: Query<(&mut OrbitCamera, &OrbitCenter, &OrbitAngles)>,
-    actions: Single<&Actions<OrbitCameraContext>>,
-) {
-    let actions = actions.into_inner();
-    for (mut camera, center, angles) in &mut cameras {
-        let zoom_input = actions.action::<OrbitZoom>().value().as_axis2d();
-        let zoom_delta = zoom_input.y * camera.orbit_radius * 0.1;
-        camera.orbit_radius -= zoom_delta;
-        camera.orbit_radius = camera.orbit_radius.clamp(0.1, 100.0);
-    }
-}
-
-fn update_orbit_angles(
-    mut cameras: Query<(&mut OrbitAngles, &OrbitCamera, &MainCamera)>,
-    actions: Single<&Actions<DefaultContext>>,
+pub(crate) fn update_spring_arm(
+    spatial_query: SpatialQuery,
+    mut cameras: Query<(
+        &mut SpringArm,
+        &mut Transform,
+        &FollowOrigin,
+        &AttachedTo,
+        Has<FirstPersonCamera>,
+    )>,
     time: Res<Time>,
 ) {
-    let actions = actions.into_inner();
-    for (mut angles, camera, main_camera) in &mut cameras {
-        let orbit_input = actions.action::<Look>().value().as_axis2d() * main_camera.sensitivity;
-        let angle_deltas = orbit_input * camera.orbit_speed * time.delta_secs();
-        angles.pitch += angle_deltas.y;
-        angles.pitch =
-            -(-angles.pitch).clamp(camera.pitch_constraint.start, camera.pitch_constraint.end);
-        angles.yaw += angle_deltas.x;
-    }
-}
+    for (mut arm, mut camera_transform, origin, attached_to, first_person) in &mut cameras {
+        let direction = camera_transform.rotation * Dir3::Z;
 
-fn orbit(
-    targets: Query<(&Transform, &TargetOf), Without<OrbitCamera>>,
-    mut cameras: Query<(&mut Transform, &OrbitCenter, &OrbitAngles, &OrbitCamera)>,
-) {
-    for (target_transform, target_of) in &targets {
-        if let Ok((mut camera_transform, center, angles, camera)) = cameras.get_mut(target_of.0) {
-            let direction =
-                Quat::from_euler(EulerRot::YXZ, angles.yaw, angles.pitch, 0.0) * Vec3::Z;
-            let orbit_position = center.0 + direction * camera.orbit_radius;
-            camera_transform.translation = orbit_position;
-            camera_transform.look_at(target_transform.translation, Vec3::Y);
+        let filter =
+            SpatialQueryFilter::from_mask(arm.filters).with_excluded_entities([attached_to.0]);
+
+        // Smoothly interpolate to an arm distance of 0.0 when in first person mode
+        if first_person {
+            arm.distance = arm
+                .distance
+                .lerp(0.0, arm.recover_speed * time.delta_secs());
+        } else if let Some(hit) = spatial_query.cast_shape(
+            &Collider::sphere(arm.collision_radius),
+            origin.0,
+            Quat::IDENTITY,
+            direction,
+            &ShapeCastConfig {
+                max_distance: arm.target_distance,
+                ..Default::default()
+            },
+            &filter,
+        ) {
+            // If there's a collision, quickly snap to the hit distance to avoid clipping with the world
+            arm.distance = hit.distance;
+        } else {
+            // Otherwise, interpolate to the target distance
+            let distance = arm
+                .distance
+                .lerp(arm.target_distance, arm.recover_speed * time.delta_secs());
+            arm.distance = distance;
         }
-    }
-}
 
-fn prevent_blindness(
-    mut cameras: Query<(&mut Transform, &PreventBlindness), With<OrbitCamera>>,
-    targets: Query<(Entity, &Transform, &TargetOf), Without<OrbitCamera>>,
-    spatial_query: SpatialQuery,
-) {
-    for (target_entity, target_transform, target_of) in &targets {
-        if let Ok((mut camera_transform, pb)) = cameras.get_mut(target_of.0) {
-            let Ok((direction, distance)) =
-                Dir3::new_and_length(camera_transform.translation - target_transform.translation)
-            else {
-                return;
-            };
-
-            if let Some(hit) = spatial_query.cast_shape(
-                &pb.camera_collider,
-                target_transform.translation,
-                target_transform.rotation,
-                direction,
-                &ShapeCastConfig {
-                    max_distance: distance,
-                    ..Default::default()
-                },
-                &SpatialQueryFilter::from_excluded_entities([target_entity]),
-            ) {
-                let hit_position = target_transform.translation + direction * hit.distance;
-                camera_transform.translation = hit_position;
-            }
-        }
+        camera_transform.translation = origin.0 + direction * arm.distance;
     }
 }

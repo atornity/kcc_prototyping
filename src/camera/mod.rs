@@ -1,107 +1,160 @@
 pub mod fly_camera;
-pub mod fps_camera;
 pub mod orbit_camera;
 
+use std::f32::consts::PI;
+
 use crate::{
-    input::{FlyCameraContext, OrbitCameraContext, ToggleCameraMode},
-    movement::{Character, Frozen},
+    AttachedTo, Attachments,
+    input::{DefaultContext, Look, ToggleFlyCam, ToggleViewPerspective},
+    movement::Frozen,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use fly_camera::{FlyCamera, FlyCameraPlugin};
-use fps_camera::{FpsCamera, FpsCameraPlugin};
-use orbit_camera::{OrbitCamera, OrbitCameraPlugin, PreventBlindness};
+use fly_camera::{FlySpeed, FlyingCamera};
+use orbit_camera::{FirstPersonCamera, SpringArm};
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((FpsCameraPlugin, OrbitCameraPlugin, FlyCameraPlugin))
-            .add_observer(cycle_camera_modes);
+        app.add_plugins((fly_camera::plugin, orbit_camera::plugin));
+        app.add_systems(Update, (view_input, update_origin).chain());
+        app.add_observer(toggle_cam_perspective);
+        app.add_observer(toggle_fly_cam);
     }
 }
 
-// the CameraMode could potentially be out of sync with the type of the actual camera controller
-// (maybe add component hook)
 #[derive(Component)]
-#[require(Camera3d, FpsCamera)]
-pub struct MainCamera {
-    pub mode: CameraMode,
-    pub sensitivity: f32,
-}
+#[require(Camera3d, Sensitivity, ViewAngles, FollowOrigin, SpringArm, FlySpeed)]
+pub struct MainCamera;
 
-impl Default for MainCamera {
+/// The look sensitivity of a camera
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+pub(crate) struct Sensitivity(pub f32);
+
+impl Default for Sensitivity {
     fn default() -> Self {
-        Self {
-            mode: CameraMode::default(),
-            sensitivity: 1.0,
-        }
+        Self(1.0)
     }
 }
 
-#[derive(Default, Debug)]
-pub enum CameraMode {
-    #[default]
-    Fps,
-    Orbit,
-    Fly,
+#[derive(Component, Reflect, Default, Debug, Clone, Copy)]
+#[reflect(Component)]
+pub(crate) struct ViewAngles {
+    pub pitch: f32,
+    pub yaw: f32,
+    pub roll: f32,
 }
 
-#[derive(Component)]
-#[relationship(relationship_target = Target)]
-pub struct TargetOf(pub Entity);
+impl ViewAngles {
+    pub fn to_quat(&self) -> Quat {
+        Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, self.roll)
+    }
+}
 
-#[derive(Component)]
-#[relationship_target(relationship = TargetOf)]
-pub struct Target(Entity);
+/// The origin of an attached camera, corresponds to the translation of the [`AttachedTo`] entity + [`FollowOffset`]
+#[derive(Component, Reflect, Default, Debug, PartialEq, Clone, Copy)]
+#[reflect(Component)]
+#[require(FollowOffset)]
+pub(crate) struct FollowOrigin(pub Vec3);
 
-fn cycle_camera_modes(
-    _: Trigger<Fired<ToggleCameraMode>>,
-    main_camera: Single<(&mut MainCamera, Entity)>,
-    player: Single<Entity, With<Character>>,
+/// The offset of an attached camera
+#[derive(Component, Reflect, Default, Debug, Clone, Copy)]
+#[reflect(Component)]
+pub struct FollowOffset {
+    pub absolute: Vec3,
+    pub relative: Vec3,
+}
+
+fn toggle_cam_perspective(
+    trigger: Trigger<Fired<ToggleViewPerspective>>,
     mut commands: Commands,
-) {
-    let (mut main_cam, main_cam_entity) = main_camera.into_inner();
-    let player_entity = player.into_inner();
+    query: Query<&Attachments>,
+    cameras: Query<(Entity, Has<FirstPersonCamera>), With<Camera>>,
+) -> Result {
+    let attachments = query.get(trigger.target())?;
 
-    match main_cam.mode {
-        CameraMode::Fps => {
-            commands
-                .entity(main_cam_entity)
-                .remove::<FpsCamera>()
-                .insert((OrbitCamera::default(), PreventBlindness::default()));
-            main_cam.mode = CameraMode::Orbit;
-
-            commands
-                .entity(player_entity)
-                .insert(Actions::<OrbitCameraContext>::default());
-        }
-        CameraMode::Orbit => {
-            // the player shouldn't be controllable while in fly-cam-mode
-            commands.entity(player_entity).insert(Frozen);
-            commands
-                .entity(main_cam_entity)
-                .remove::<OrbitCamera>()
-                .insert(FlyCamera::default());
-            main_cam.mode = CameraMode::Fly;
-
-            commands
-                .entity(player_entity)
-                .remove::<Actions<OrbitCameraContext>>()
-                .insert(Actions::<FlyCameraContext>::default());
-        }
-        CameraMode::Fly => {
-            // allow for player movement once in fps-mode
-            commands.entity(player_entity).remove::<Frozen>();
-            commands
-                .entity(main_cam_entity)
-                .remove::<FlyCamera>()
-                .insert(FpsCamera);
-            main_cam.mode = CameraMode::Fps;
-
-            commands
-                .entity(player_entity)
-                .remove::<Actions<FlyCameraContext>>();
-        }
+    for (camera, first_person) in cameras.iter_many(attachments.iter()) {
+        match first_person {
+            true => commands.entity(camera).remove::<FirstPersonCamera>(),
+            false => commands.entity(camera).insert(FirstPersonCamera),
+        };
     }
+
+    Ok(())
+}
+
+fn toggle_fly_cam(
+    trigger: Trigger<Fired<ToggleFlyCam>>,
+    mut commands: Commands,
+    mut query: Query<&Attachments>,
+    cameras: Query<(Entity, Has<FlyingCamera>), With<Camera>>,
+) -> Result {
+    let attachments = query.get_mut(trigger.target())?;
+
+    for (camera, fly_camera) in cameras.iter_many(attachments.iter()) {
+        match fly_camera {
+            true => {
+                commands.entity(trigger.target()).remove::<Frozen>();
+                commands
+                    .entity(camera)
+                    .remove::<FlyingCamera>()
+                    .insert(FollowOrigin::default());
+            }
+            false => {
+                commands.entity(trigger.target()).insert(Frozen);
+                commands
+                    .entity(camera)
+                    .remove::<FollowOrigin>()
+                    .insert(FlyingCamera);
+            }
+        };
+    }
+
+    Ok(())
+}
+
+pub(crate) fn view_input(
+    mut cameras: Query<(&mut ViewAngles, &mut Transform, &Sensitivity)>,
+    actions: Single<&Actions<DefaultContext>>,
+    time: Res<Time>,
+) {
+    let actions = actions.into_inner();
+
+    for (mut angles, mut transform, sensitivity) in &mut cameras {
+        let orbit_input = actions.action::<Look>().value().as_axis2d() * sensitivity.0;
+        let angle_deltas = orbit_input * PI * time.delta_secs();
+
+        angles.pitch += angle_deltas.y;
+        angles.pitch = angles.pitch.clamp(-PI / 2.0 + 0.01, PI / 2.0 - 0.01);
+        angles.yaw += angle_deltas.x;
+
+        transform.rotation = angles.to_quat();
+    }
+}
+
+pub(crate) fn update_origin(
+    targets: Query<&GlobalTransform>,
+    mut cameras: Query<(
+        &mut FollowOrigin,
+        &mut Transform,
+        &ViewAngles,
+        &FollowOffset,
+        &AttachedTo,
+    )>,
+) -> Result {
+    for (mut origin, mut transform, angles, offset, attached_to) in &mut cameras {
+        let orbit_transform = targets.get(attached_to.0)?;
+
+        let mut point = orbit_transform.translation();
+
+        point += offset.absolute;
+        point += angles.to_quat() * offset.relative;
+
+        origin.0 = point;
+        transform.translation = point;
+    }
+
+    Ok(())
 }

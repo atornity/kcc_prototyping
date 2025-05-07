@@ -28,17 +28,17 @@ pub struct ReleaseCursor;
 
 #[derive(Debug, Clone, Copy, InputAction)]
 #[input_action(output = bool)]
-pub struct ToggleCameraMode;
+pub struct ToggleViewPerspective;
+
+#[derive(Debug, Clone, Copy, InputAction)]
+#[input_action(output = bool)]
+pub struct ToggleFlyCam;
 
 // --- Fly Camera Specific Actions ---
 
-#[derive(Debug, Clone, Copy, InputAction)]
-#[input_action(output = bool)]
-pub struct FlyVerticalMoveUp;
-
-#[derive(Debug, Clone, Copy, InputAction)]
-#[input_action(output = bool)]
-pub struct FlyVerticalMoveDown;
+#[derive(InputAction, Debug, Clone, Copy)]
+#[input_action(output = f32)]
+pub(crate) struct Fly;
 
 // --- Orbit Camera Specific Actions  ---
 #[derive(Debug, Clone, Copy, InputAction)]
@@ -109,18 +109,20 @@ fn bind_default_context_actions(
             .with_conditions(JustPress::default());
 
         // --- Camera Look (Used by FPS, potentially others if not overridden) ---
-        actions
-            .bind::<Look>()
-            .to((
-                Input::mouse_motion().with_modifiers((Scale::splat(0.05), Negate::all())),
-                Axial::right_stick().with_modifiers_each(Negate::x()),
-            ))
-            .with_modifiers(AtLeast(0.2));
+        actions.bind::<Look>().to((
+            Input::mouse_motion().with_modifiers((Scale::splat(0.05), Negate::all())),
+            Axial::right_stick().with_modifiers_each((Negate::x(), AtLeast(0.2))),
+        ));
 
         // --- Global Actions ---
+
         actions
-            .bind::<ToggleCameraMode>()
-            .to((KeyCode::F1, GamepadButton::DPadUp))
+            .bind::<ToggleViewPerspective>()
+            .to((KeyCode::KeyC, GamepadButton::DPadDown))
+            .with_conditions(JustPress::default());
+        actions
+            .bind::<ToggleFlyCam>()
+            .to((KeyCode::KeyF, GamepadButton::DPadUp))
             .with_conditions(JustPress::default());
     } else {
         warn!(
@@ -141,14 +143,18 @@ fn bind_fly_camera_actions(
             "Binding FlyCameraContext actions for entity {:?}",
             trigger.target()
         );
-        // Bind vertical movement for FlyCam
-        actions
-            .bind::<FlyVerticalMoveUp>()
-            .to((KeyCode::ShiftLeft, GamepadButton::East));
 
-        actions
-            .bind::<FlyVerticalMoveDown>()
-            .to((KeyCode::ControlLeft, GamepadButton::LeftThumb));
+        // Bind vertical movement for FlyCam
+        actions.bind::<Fly>().to((
+            Bidirectional {
+                positive: KeyCode::KeyE,
+                negative: KeyCode::KeyQ,
+            },
+            Bidirectional {
+                positive: GamepadButton::East,
+                negative: GamepadButton::LeftThumb,
+            },
+        ));
     } else {
         warn!(
             "Failed to get Actions<FlyCameraContext> for entity {:?} during binding",
@@ -202,7 +208,7 @@ fn release_cursor(
 // Helper
 // InputModifier that sets the value of an input to 0.0 if a threshold is not reached
 // Used to prevent stick drift in (Nintendo) controllers
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AtLeast(pub f32);
 
 impl Default for AtLeast {
