@@ -146,7 +146,7 @@ fn movement(
 
                 if walkable {
                     // Dir3::new won't be Err since we have already checked if it's walkable
-                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
+                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap_or(Dir3::Y));
                 }
 
                 let grounded = character.ground.is_some() || new_ground.is_some();
@@ -167,7 +167,8 @@ fn movement(
                 let a = 1.0 - EXAMPLE_WALKABLE_ANGLE.cos();
                 let min_inward_distance = EXAMPLE_CHARACTER_RADIUS * a;
 
-                // Step into the hit normal alil bit
+                // Step into the hit normal alil bit, this helps with the capsule collider.
+                // Cylinders don't need this since they have a flat bottom.
                 let inward = min_inward_distance + config.epsilon * PI;
 
                 // Step a lil bit less forward to account for stepping into the hit normal
@@ -194,14 +195,16 @@ fn movement(
                     return true;
                 }
 
-                // Make sure velocity is not upwards after stepping
+                // Make sure velocity is not upwards after stepping. This is because if 
+                // we're a capsule, the roundness of it will cause an upward velocity, 
+                // giving us a launching up effect that we don't want.
                 let up_vel = movement.translation.dot(*character.up).max(0.0);
                 *movement.velocity -= character.up * up_vel;
 
                 // We need to override the translation here because the we stepped up
                 *movement.translation = step_offset;
 
-                new_ground = Some(Dir3::new(step_hit.normal1).unwrap());
+                new_ground = Some(Dir3::new(step_hit.normal1).unwrap_or(Dir3::Y));
 
                 // Subtract the stepped distance from remaining time to avoid moving further
                 let move_time = (forward + inward) * time.delta_secs();
@@ -228,7 +231,7 @@ fn movement(
                 EXAMPLE_WALKABLE_ANGLE,
             ) {
                 transform.translation -= movement * character.up;
-                new_ground = Some(Dir3::new(hit.normal1).unwrap());
+                new_ground = Some(Dir3::new(hit.normal1).unwrap_or(Dir3::Y));
             }
         }
 

@@ -72,6 +72,7 @@ pub struct MoveAndSlideHit<'a> {
     pub motion: f32,
     /// This is the remaining movement within the substep that would have occurred if we didn't hit anything.
     pub remaining_motion: f32,
+    /// This is the remaining time of the movement for all substeps. You can override this value to stop the movement early.
     pub remaining_time: &'a mut f32,
 }
 
@@ -92,6 +93,8 @@ pub fn move_and_slide(
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
     delta_time: f32,
+    // Callback that is called when a hit occurs.
+    // If `false` is returned then the body will not slide during that iteration.
     mut on_hit: impl FnMut(&mut MoveAndSlideHit) -> bool,
 ) -> Option<MoveAndSlideResult> {
     let Ok(original_direction) = Dir3::new(velocity) else {
@@ -139,6 +142,7 @@ pub fn move_and_slide(
             remaining_motion: max_distance - safe_movement,
             remaining_time: &mut remaining_time,
         }) {
+            // User decided to not slide, continue to next substep
             continue;
         }
 
