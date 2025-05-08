@@ -65,7 +65,7 @@ fn movement(
     for (entity, actions, mut transform, mut character, character_collider, layers) in &mut q_kcc {
         if actions.action::<Jump>().state() == ActionState::Fired {
             if character.ground.is_some() {
-                let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
+                let impulse = Vec3::Y * EXAMPLE_JUMP_IMPULSE;
                 character.velocity += impulse;
                 character.ground = None;
             }
@@ -98,7 +98,7 @@ fn movement(
             }
             None => {
                 // Apply gravity when not grounded
-                let gravity = character.up * -EXAMPLE_GRAVITY * time.delta_secs();
+                let gravity = Vec3::Y * -EXAMPLE_GRAVITY * time.delta_secs();
                 character.velocity += gravity;
 
                 EXAMPLE_AIR_ACCELERATION
@@ -160,7 +160,7 @@ fn movement(
                     if let Some(try_climb_step_result) = try_climb_step(
                         // We use a cylinder collider for climbing up steps
                         // because it helps climb them even at low speeds.
-                        &character_collider,
+                        &cylinder_collider,
                         &config,
                         *hit.overridable_translation,
                         hit.remaining_motion,
@@ -191,7 +191,7 @@ fn movement(
                             &cylinder_collider,
                             &config,
                             *hit.overridable_translation,
-                            character.up,
+                            Dir3::Y,
                             rotation,
                             &spatial_query,
                             &filter,
@@ -202,6 +202,10 @@ fn movement(
                             // we slide along the normal of the new floor and not the wall of the step.
                             *hit.overridable_normal = hit_normal;
                             grounded_this_frame = true;
+                            character.ground = Some(Dir3::new(hit_normal).unwrap_or(Dir3::Y));
+                        }
+                        else {
+                            character.ground = None;
                         }
                     }
                 }
@@ -216,7 +220,7 @@ fn movement(
                 &character_collider,
                 &config,
                 transform.translation,
-                character.up,
+                Dir3::Y,
                 rotation,
                 &spatial_query,
                 &filter,
@@ -225,6 +229,9 @@ fn movement(
             ) {
                 transform.translation -= movement * Vec3::Y;
                 character.ground = Some(Dir3::new(hit_normal).unwrap_or(Dir3::Y));
+            }
+            else {
+                character.ground = None;
             }
         }
     }
