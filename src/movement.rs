@@ -65,8 +65,7 @@ fn movement(
     for (entity, actions, mut transform, mut character, character_collider, layers) in &mut q_kcc {
         if actions.action::<Jump>().state() == ActionState::Fired {
             if character.ground.is_some() {
-                let impulse = Vec3::Y * EXAMPLE_JUMP_IMPULSE;
-                character.velocity += impulse;
+                character.velocity.y = EXAMPLE_JUMP_IMPULSE;
                 character.ground = None;
             }
         }
@@ -74,25 +73,28 @@ fn movement(
         // Get the raw 2D input vector
         let input_vec = actions.action::<input::Move>().value().as_axis2d();
 
-        // Rotate the movement direction vector by the camera's yaw
-        let mut direction =
-            main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
+        // Extract just the yaw from the camera rotation
+        let camera_yaw = main_camera_transform.rotation.to_euler(EulerRot::YXZ).0;
+        let yaw_rotation = Quat::from_rotation_y(camera_yaw);
+
+        // Rotate the movement direction vector by only the camera's yaw
+        let mut direction = yaw_rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
         let max_acceleration = match character.ground {
             Some(floor_normal) => {
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
-                // Make sure velocity is never towards the floor since this makes the jump height inconsistent
-                let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
-                character.velocity -= floor_normal * downward_vel;
+                // // Make sure velocity is never towards the floor since this makes the jump height inconsistent
+                // let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
+                // character.velocity -= floor_normal * downward_vel;
 
                 // Project input direction on the floor normal to allow walking down slopes
                 // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
                 // even more so for steep slopes.
-                direction = direction
-                    .reject_from_normalized(*floor_normal)
-                    .normalize_or_zero();
+                // direction = direction
+                //     .reject_from_normalized(*floor_normal)
+                //     .normalize_or_zero();
 
                 EXAMPLE_GROUND_ACCELERATION
             }
@@ -127,7 +129,13 @@ fn movement(
 
         let config = MoveAndSlideConfig::default();
         
-        let mut grounded_this_frame = false;
+        // See notes below about why we use a cylinder collider in some stages.
+        let cylinder_collider = Collider::cylinder(
+            EXAMPLE_CHARACTER_RADIUS,
+            // need to add both radii to length to account for the capsule's hemispheres on both ends
+            // because the goal is to have the cylinder collider be the same height as the capsule collider
+            EXAMPLE_CHARACTER_CAPSULE_LENGTH + (2.0 * EXAMPLE_CHARACTER_RADIUS)
+        );
 
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
@@ -141,21 +149,12 @@ fn movement(
             |hit| {
                 let walkable = is_walkable(hit.shape_hit, Dir3::Y, EXAMPLE_WALKABLE_ANGLE);
 
-                if walkable {
-                    grounded_this_frame = true;
+                if walkable && character.velocity.y <= 0.0 {
                     character.ground = Some(Dir3::new(hit.shape_hit.normal1).unwrap_or(Dir3::Y));
                 }
 
                 // In order to try step up we need to be grounded and hitting a "wall".
                 if !walkable && character.ground.is_some() {
-
-                    // See notes below about why we use a cylinder collider in the next two stages.
-                    let cylinder_collider = Collider::cylinder(
-                        EXAMPLE_CHARACTER_RADIUS,
-                        // need to add both radii to length to account for the capsule's hemispheres on both ends
-                        // because the goal is to have the cylinder collider be the same height as the capsule collider
-                        EXAMPLE_CHARACTER_CAPSULE_LENGTH + (2.0 * EXAMPLE_CHARACTER_RADIUS)
-                    );
 
                     if let Some(try_climb_step_result) = try_climb_step(
                         // We use a cylinder collider for climbing up steps
@@ -179,18 +178,15 @@ fn movement(
                         // We need to override the translation here because the we stepped up
                         *hit.overridable_translation = try_climb_step_result.new_translation;
 
-                        // Check the ground again after climbing the step
-                        // because it's possible what we stepped up onto is 
-                        // not walkable for whatever reason. Also a good failsafe.
-                        // note:    Maybe the gamedev can have something 
-                        //          that is a non-wall but also not walkable?
-                        //          In which case, this would be important.
-                        if let Some((_movement, hit_normal)) = ground_check(
-                            // We use a cylinder collider for this specific ground check
-                            // because I find it gives a better hit normal to slide along.
+                        // We also need to override the normal here because the we stepped up
+                        // this is so that the sliding functionality slides along the step and 
+                        // not the wall of the step.
+                        *hit.overridable_normal = Some(try_climb_step_result.new_normal);
+
+                        if let Some((movement, hit_normal)) = ground_check(
                             &cylinder_collider,
                             &config,
-                            *hit.overridable_translation,
+                            transform.translation,
                             Dir3::Y,
                             rotation,
                             &spatial_query,
@@ -198,10 +194,8 @@ fn movement(
                             EXAMPLE_GROUND_CHECK_DISTANCE,
                             EXAMPLE_WALKABLE_ANGLE,
                         ) {
-                            // Finally, we need to override the normal so that when we slide, 
-                            // we slide along the normal of the new floor and not the wall of the step.
-                            *hit.overridable_normal = hit_normal;
-                            grounded_this_frame = true;
+                            *hit.overridable_translation -= movement * Vec3::Y;
+                            *hit.overridable_normal = Some(hit_normal);
                             character.ground = Some(Dir3::new(hit_normal).unwrap_or(Dir3::Y));
                         }
                         else {
@@ -215,7 +209,10 @@ fn movement(
             character.velocity = move_and_slide_result.new_velocity;
         }
 
-        if !grounded_this_frame {
+        if character.velocity.y > 0.0 {
+            character.ground = None;
+        }
+        else {
             if let Some((movement, hit_normal)) = ground_check(
                 &character_collider,
                 &config,

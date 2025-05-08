@@ -30,7 +30,7 @@ pub fn sweep_check(
     )?;
 
     // How far is safe to translate by
-    let safe_distance = (hit.distance - epsilon).max(0.0);
+    let safe_distance = hit.distance - epsilon;
 
     Some((safe_distance, hit))
 }
@@ -66,7 +66,7 @@ pub struct MoveAndSlideHit<'a> {
     pub shape_hit: ShapeHitData,
 
     /// You can override the normal from within the `on_hit` callback by setting this value.
-    pub overridable_normal: &'a mut Vec3,
+    pub overridable_normal: &'a mut Option<Vec3>,
 
     /// You can override the translation from within the `on_hit` callback by setting this value.
     pub overridable_translation: &'a mut Vec3,
@@ -126,7 +126,7 @@ pub fn move_and_slide(
             break;
         };
 
-        let mut hit_normal = hit.normal1;
+        let mut hit_normal = Some(hit.normal1);
 
         // Progress time by the movement amount
         remaining_time *= 1.0 - safe_movement / max_distance;
@@ -145,11 +145,14 @@ pub fn move_and_slide(
             remaining_motion: direction * (max_distance - safe_movement),
         });
 
-        hits.push(hit_normal);
+        // It is possible the user has set the normal to None, 
+        // in which case we don't want to slide along it anymore.
+        if let Some(normal) = hit_normal {
+            hits.push(normal);
+        }
 
-        // Project velocity and remaining motion onto the surface plane
         velocity = solve_collision_planes(velocity, &hits, *original_direction);
-        
+
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
         if velocity.dot(*original_direction) <= 0.0 {
             break;

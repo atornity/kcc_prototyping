@@ -13,7 +13,7 @@ pub const EXAMPLE_WALKABLE_ANGLE: f32 = std::f32::consts::PI / 4.0;
 pub const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 pub const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 pub const EXAMPLE_STEP_HEIGHT: f32 = 0.25;
-pub const EXAMPLE_GROUND_CHECK_DISTANCE: f32 = 0.05;
+pub const EXAMPLE_GROUND_CHECK_DISTANCE: f32 = 0.1;
 
 // @todo: probably want to improve the ergonomics of these 
 // functions by accepting a struct instead of a bunch of arguments, 
@@ -28,6 +28,7 @@ pub fn is_walkable(hit: ShapeHitData, up: Dir3, walkable_angle: f32) -> bool {
 /// Result of trying to climb a step.
 pub struct TryClimbStepResult {
     pub new_translation: Vec3,
+    pub new_normal: Vec3,
 }
 
 /// Find and climb steps in the movement direction.
@@ -98,9 +99,10 @@ pub fn try_climb_step(
         filter,
     );
 
-    if let Some((hit_distance, _hit)) = step_down_hit {        
+    if let Some((hit_distance, hit)) = step_down_hit {        
         Some(TryClimbStepResult {
             new_translation: step_up_pos + motion + Dir3::NEG_Y * hit_distance,
+            new_normal: hit.normal1,
         })
     } else {
         None
