@@ -70,6 +70,7 @@ pub fn try_climb_step(
 
     // Only step up if horizontal motion is non zero
     if let Ok(direction) = Dir3::new(horizontal_motion) {
+        // Step up and sweep forward
         let None = spatial_query.cast_shape(
             collider,
             step_up_pos,
@@ -88,7 +89,7 @@ pub fn try_climb_step(
 
     let step_down_pos = step_up_pos + horizontal_motion;
 
-    // Sweep towards the floor
+    // Step forward and sweep down
     let (safe_distance, step_down_hit) = sweep_check(
         collider,
         epsilon,

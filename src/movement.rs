@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use avian3d::prelude::{
     Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
@@ -166,7 +168,7 @@ fn movement(
                 let min_inward_distance = EXAMPLE_CHARACTER_RADIUS * a;
 
                 // Step into the hit normal alil bit
-                let inward = min_inward_distance + config.epsilon;
+                let inward = min_inward_distance + config.epsilon * PI;
 
                 // Step a lil bit less forward to account for stepping into the hit normal
                 let forward = (movement.remaining_motion - inward).max(0.0);
