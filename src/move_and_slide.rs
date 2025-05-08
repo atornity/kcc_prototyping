@@ -2,6 +2,13 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
+#[derive(Reflect, Debug, Clone, Copy)]
+pub(crate) struct Floor {
+    pub entity: Entity,
+    pub normal: Dir3,
+    pub distance: f32,
+}
+
 #[must_use]
 pub fn character_sweep(
     collider: &Collider,

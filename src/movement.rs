@@ -9,7 +9,7 @@ use bevy_enhanced_input::prelude::{ActionState, Actions};
 use crate::{
     camera::MainCamera,
     input::{self, DefaultContext, Jump},
-    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
+    move_and_slide::{Floor, MoveAndSlideConfig, character_sweep, move_and_slide},
 };
 
 pub struct KCCPlugin;
@@ -27,7 +27,7 @@ impl Plugin for KCCPlugin {
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Dir3>,
+    floor: Option<Floor>,
     up: Dir3,
 }
 
@@ -89,19 +89,19 @@ fn movement(
             main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
         let max_acceleration = match character.floor {
-            Some(floor_normal) => {
+            Some(floor) => {
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
                 // Make sure velocity is never towards the floor since this makes the jump height inconsistent
-                let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
-                character.velocity -= floor_normal * downward_vel;
+                let downward_vel = character.velocity.dot(*floor.normal).min(0.0);
+                character.velocity -= floor.normal * downward_vel;
 
                 // Project input direction on the floor normal to allow walking down slopes
                 // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
                 // even more so for steep slopes.
                 direction = direction
-                    .reject_from_normalized(*floor_normal)
+                    .reject_from_normalized(*floor.normal)
                     .normalize_or_zero();
 
                 EXAMPLE_FLOOR_ACCELERATION
@@ -140,8 +140,8 @@ fn movement(
         let up = character.up;
 
         // Check if the floor is walkable
-        let is_walkable = |hit: ShapeHitData| {
-            let slope_angle = up.angle_between(hit.normal1);
+        let is_walkable = |normal: Vec3| {
+            let slope_angle = up.angle_between(normal);
             slope_angle < EXAMPLE_WALKABLE_ANGLE
         };
 
@@ -157,8 +157,12 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                if is_walkable(hit) {
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
+                if is_walkable(hit.normal1) {
+                    floor = Some(Floor {
+                        entity,
+                        normal: Dir3::new(hit.normal1).unwrap(),
+                        distance: hit.distance, // TODO: use safe distance?
+                    });
                 }
             },
         ) {
