@@ -73,7 +73,7 @@ pub struct Character {
 impl Character {
     pub fn launch(&mut self, impulse: Vec3) {
         if let Some(floor) = self.floor {
-            if floor.normal.dot(impulse) > 0.0 {
+            if floor.dot(impulse) > 0.0 {
                 self.floor = None;
             }
         }
