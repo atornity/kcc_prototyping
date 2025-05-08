@@ -1,6 +1,63 @@
-use avian3d::prelude::*;
+use avian3d::{parry::shape::TypedShape, prelude::*};
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
+
+#[derive(Reflect, Debug, Clone, Copy)]
+pub(crate) struct Floor {
+    pub entity: Entity,
+    pub normal: Dir3,
+    pub distance: f32,
+}
+
+/// This uses two shape casts, one with a deflated size, to pick the normal with the angle closest to `-direction`.
+pub(crate) fn floor_sweep(
+    collider: &Collider,
+    epsilon: f32,
+    origin: Vec3,
+    direction: Dir3,
+    max_distance: f32,
+    rotation: Quat,
+    spatial_query: &SpatialQuery,
+    filter: &SpatialQueryFilter,
+) -> Option<Floor> {
+    let (safe_distance, hit) = character_sweep(
+        collider,
+        epsilon,
+        origin,
+        direction,
+        max_distance,
+        rotation,
+        spatial_query,
+        filter,
+    )?;
+
+    let mut floor = Floor {
+        entity: hit.entity,
+        normal: Dir3::new(hit.normal1).ok()?,
+        distance: safe_distance,
+    };
+
+    let Some((_, deflated_hit)) = character_sweep(
+        &inflate_shape(collider, -epsilon), // shrink the shape a bit
+        epsilon,
+        origin,
+        direction,
+        max_distance + epsilon, // extend the trace since we shrinked the shape
+        rotation,
+        spatial_query,
+        filter,
+    ) else {
+        return Some(floor);
+    };
+
+    // select the floor with the smallest angle
+    if deflated_hit.normal1.dot(*direction) < hit.normal1.dot(*direction) {
+        floor.entity = deflated_hit.entity;
+        floor.normal = Dir3::new(deflated_hit.normal1).ok()?;
+    }
+
+    Some(floor)
+}
 
 #[must_use]
 pub fn character_sweep(
@@ -202,4 +259,17 @@ fn solve_collision_planes(
             }
         })
         .unwrap_or_else(|vel| vel)
+}
+
+/// Grow or shrink a [`Collider`].
+pub fn inflate_shape(shape: &Collider, value: f32) -> Collider {
+    match shape.shape().as_typed_shape() {
+        TypedShape::Capsule(capsule) => Collider::capsule(capsule.radius + value, capsule.height()),
+        TypedShape::Ball(ball) => Collider::sphere(ball.radius + value),
+        TypedShape::Cylinder(cylinder) => Collider::cylinder(
+            cylinder.radius + value,              // extend radius
+            (cylinder.half_height + value) * 2.0, // extend top abd bottom
+        ),
+        _ => todo!("implement the remaining shapes that make sense"),
+    }
 }
