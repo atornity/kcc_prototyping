@@ -6,10 +6,7 @@ use bevy::{
 };
 use bevy_enhanced_input::prelude::Actions;
 use kcc_prototype::{
-    camera::{CameraPlugin, MainCamera, TargetOf},
-    input::{DefaultContext, InputPlugin},
-    level::LevelGeneratorPlugin,
-    movement::{Character, KCCPlugin},
+    camera::{CameraPlugin, MainCamera, TargetOf}, character::{EXAMPLE_CHARACTER_CAPSULE_LENGTH, EXAMPLE_CHARACTER_RADIUS}, input::{DefaultContext, InputPlugin}, level::LevelGeneratorPlugin, movement::{Character, KCCPlugin}
 };
 
 fn main() -> AppExit {
@@ -39,6 +36,7 @@ fn setup(
                 hdr: true,
                 ..Default::default()
             },
+            Camera3d::default(),
             Atmosphere::EARTH,
             Exposure::SUNLIGHT,
             Projection::Perspective(PerspectiveProjection {
@@ -58,7 +56,7 @@ fn setup(
         Actions::<DefaultContext>::default(),
         Character::default(),
         TargetOf(main_cam),
-        Mesh3d(meshes.add(Capsule3d::new(0.35, 1.0))),
+        Mesh3d(meshes.add(Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::WHITE.with_alpha(0.25),
             alpha_mode: AlphaMode::Blend,

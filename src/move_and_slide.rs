@@ -2,8 +2,10 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
+/// Check if the character is grounded and update floor state accordingly
+/// Returns the safe hit distance and the hit data from the spatial query.
 #[must_use]
-pub fn character_sweep(
+pub fn sweep_check(
     collider: &Collider,
     epsilon: f32,
     origin: Vec3,
@@ -33,26 +35,54 @@ pub fn character_sweep(
     Some((safe_distance, hit))
 }
 
-////// EXAMPLE MOVEMENT /////////////
+/// Configuration for the move_and_slide function.
 #[derive(Clone, Copy)]
 pub struct MoveAndSlideConfig {
-    pub max_iterations: usize,
+    pub max_substeps: u8,
     pub epsilon: f32,
 }
 
 impl Default for MoveAndSlideConfig {
     fn default() -> Self {
         Self {
-            max_iterations: 4,
+            max_substeps: 4,
             epsilon: 0.01,
         }
     }
 }
 
+/// Result of the move_and_slide function.
 pub struct MoveAndSlideResult {
     pub new_translation: Vec3,
     pub new_velocity: Vec3,
 }
+
+/// Hit data from the move_and_slide function.
+pub struct MoveAndSlideHit<'a> {
+    /// `move_and_slide` works by substepping. This is the last substep that has occurred, starting from 0.
+    pub substep: u8,
+
+    /// The hit data from the spatial query.
+    pub shape_hit: ShapeHitData,
+
+    /// You can override the normal from within the `on_hit` callback by setting this value.
+    pub overridable_normal: &'a mut Vec3,
+
+    /// You can override the translation from within the `on_hit` callback by setting this value.
+    pub overridable_translation: &'a mut Vec3,
+
+    /// You can override the velocity from within the `on_hit` callback by setting this value.
+    pub overridable_velocity: &'a mut Vec3,
+
+    /// This is the movement that occured within the substep before the hit.
+    pub motion: Vec3,
+
+    /// This is the remaining movement within the substep that would have occurred if we didn't hit anything.
+    pub remaining_motion: Vec3,
+}
+
+// @todo: lets make this take in a struct instead of a bunch of arguments,
+// that way each can be commented and we can also provide sane defaults, also ordering doesn't matter.
 
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
@@ -66,7 +96,7 @@ pub fn move_and_slide(
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
     delta_time: f32,
-    mut on_hit: impl FnMut(ShapeHitData),
+    mut on_hit: impl FnMut(&mut MoveAndSlideHit),
 ) -> Option<MoveAndSlideResult> {
     let Ok(original_direction) = Dir3::new(velocity) else {
         return None;
@@ -77,14 +107,14 @@ pub fn move_and_slide(
 
     let mut remaining_time = delta_time;
 
-    let mut hits = Vec::with_capacity(config.max_iterations);
+    let mut hits = Vec::with_capacity(config.max_substeps as usize);
 
-    for _ in 0..config.max_iterations {
+    for substep in 0..config.max_substeps {
         let Ok((direction, max_distance)) = Dir3::new_and_length(velocity * remaining_time) else {
             break;
         };
 
-        let Some((safe_movement, hit)) = character_sweep(
+        let Some((safe_movement, hit)) = sweep_check(
             collider,
             config.epsilon,
             translation,
@@ -99,20 +129,30 @@ pub fn move_and_slide(
             break;
         };
 
-        // Trigger callbacks
-        on_hit(hit);
-
-        hits.push(hit.normal1);
+        let mut hit_normal = hit.normal1;
 
         // Progress time by the movement amount
         remaining_time *= 1.0 - safe_movement / max_distance;
 
         // Move the transform to just before the point of collision
         translation += direction * safe_movement;
+        
+        // Trigger callbacks
+        on_hit(&mut MoveAndSlideHit {
+            substep,
+            shape_hit: hit,
+            overridable_normal: &mut hit_normal,
+            overridable_translation: &mut translation,
+            overridable_velocity: &mut velocity,
+            motion: direction * safe_movement,
+            remaining_motion: direction * (max_distance - safe_movement),
+        });
+
+        hits.push(hit_normal);
 
         // Project velocity and remaining motion onto the surface plane
         velocity = solve_collision_planes(velocity, &hits, *original_direction);
-
+        
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
         if velocity.dot(*original_direction) <= 0.0 {
             break;

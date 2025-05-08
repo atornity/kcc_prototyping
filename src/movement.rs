@@ -1,16 +1,14 @@
-use std::f32::consts::PI;
-
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
 use crate::{
-    camera::MainCamera,
-    input::{self, DefaultContext, Jump},
-    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
+    camera::MainCamera, character::*, input::{self, DefaultContext, Jump}, move_and_slide::*
 };
+
+// @todo: we should probably move all of this into an example file, then make the project a lib instead of a bin.
 
 pub struct KCCPlugin;
 
@@ -23,11 +21,11 @@ impl Plugin for KCCPlugin {
 #[derive(Component)]
 #[require(
     RigidBody = RigidBody::Kinematic,
-    Collider = Capsule3d::new(0.35, 1.0),
+    Collider = Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH),
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Dir3>,
+    ground: Option<Dir3>,
     up: Dir3,
 }
 
@@ -35,7 +33,7 @@ impl Default for Character {
     fn default() -> Self {
         Self {
             velocity: Vec3::ZERO,
-            floor: None,
+            ground: None,
             up: Dir3::Y,
         }
     }
@@ -45,14 +43,6 @@ impl Default for Character {
 // This shouldn't be strictly necessary if we figure out how to properly layer InputContexts.
 #[derive(Component)]
 pub struct Frozen;
-
-const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
-const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
-const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
-const EXAMPLE_FRICTION: f32 = 60.0;
-const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
-const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
-const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
 fn movement(
     mut q_kcc: Query<
@@ -72,12 +62,12 @@ fn movement(
     spatial_query: SpatialQuery,
 ) {
     let main_camera_transform = main_camera.into_inner();
-    for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
+    for (entity, actions, mut transform, mut character, character_collider, layers) in &mut q_kcc {
         if actions.action::<Jump>().state() == ActionState::Fired {
-            if character.floor.is_some() {
+            if character.ground.is_some() {
                 let impulse = character.up * EXAMPLE_JUMP_IMPULSE;
                 character.velocity += impulse;
-                character.floor = None;
+                character.ground = None;
             }
         }
 
@@ -88,7 +78,7 @@ fn movement(
         let mut direction =
             main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
-        let max_acceleration = match character.floor {
+        let max_acceleration = match character.ground {
             Some(floor_normal) => {
                 if let Some(apply_friction_result) =
                     apply_friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs())
@@ -107,7 +97,7 @@ fn movement(
                     .reject_from_normalized(*floor_normal)
                     .normalize_or_zero();
 
-                EXAMPLE_FLOOR_ACCELERATION
+                EXAMPLE_GROUND_ACCELERATION
             }
             None => {
                 // Apply gravity when not grounded
@@ -140,20 +130,12 @@ fn movement(
         filter.excluded_entities.extend(sensors);
 
         let config = MoveAndSlideConfig::default();
-
-        let up = character.up;
-
-        // Check if the floor is walkable
-        let is_walkable = |hit: ShapeHitData| {
-            let slope_angle = up.angle_between(hit.normal1);
-            slope_angle < EXAMPLE_WALKABLE_ANGLE
-        };
-
-        let mut floor = None;
+        
+        let mut grounded_this_frame = false;
 
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
-            collider,
+            &character_collider,
             transform.translation,
             character.velocity,
             rotation,
@@ -161,8 +143,71 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                if is_walkable(hit) {
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
+                let walkable = is_walkable(hit.shape_hit, Dir3::Y, EXAMPLE_WALKABLE_ANGLE);
+
+                if walkable {
+                    grounded_this_frame = true;
+                    character.ground = Some(Dir3::new(hit.shape_hit.normal1).unwrap_or(Dir3::Y));
+                }
+
+                // In order to try step up we need to be grounded and hitting a "wall".
+                if !walkable && character.ground.is_some() {
+
+                    // See notes below about why we use a cylinder collider in the next two stages.
+                    let cylinder_collider = Collider::cylinder(
+                        EXAMPLE_CHARACTER_RADIUS,
+                        // need to add both radii to length to account for the capsule's hemispheres on both ends
+                        // because the goal is to have the cylinder collider be the same height as the capsule collider
+                        EXAMPLE_CHARACTER_CAPSULE_LENGTH + (2.0 * EXAMPLE_CHARACTER_RADIUS)
+                    );
+
+                    if let Some(try_climb_step_result) = try_climb_step(
+                        // We use a cylinder collider for climbing up steps
+                        // because it helps climb them even at low speeds.
+                        &character_collider,
+                        &config,
+                        *hit.overridable_translation,
+                        hit.remaining_motion,
+                        rotation,
+                        &spatial_query,
+                        EXAMPLE_STEP_HEIGHT,
+                        EXAMPLE_GROUND_CHECK_DISTANCE,
+                        &filter,
+                    ) {
+                        // Since we're a capsule, we need to zero out the Y velocity when 
+                        // we climb a step or it will feel like we're launching over the step.
+                        // This is because of the roundness of the capsule naturally pushing 
+                        // us up as we encroach on the step, especially at high speeds.
+                        hit.overridable_velocity.y = 0.0;
+
+                        // We need to override the translation here because the we stepped up
+                        *hit.overridable_translation = try_climb_step_result.new_translation;
+
+                        // Check the ground again after climbing the step
+                        // because it's possible what we stepped up onto is 
+                        // not walkable for whatever reason. Also a good failsafe.
+                        // note:    Maybe the gamedev can have something 
+                        //          that is a non-wall but also not walkable?
+                        //          In which case, this would be important.
+                        if let Some((_movement, hit_normal)) = ground_check(
+                            // We use a cylinder collider for this specific ground check
+                            // because I find it gives a better hit normal to slide along.
+                            &cylinder_collider,
+                            &config,
+                            *hit.overridable_translation,
+                            character.up,
+                            rotation,
+                            &spatial_query,
+                            &filter,
+                            EXAMPLE_GROUND_CHECK_DISTANCE,
+                            EXAMPLE_WALKABLE_ANGLE,
+                        ) {
+                            // Finally, we need to override the normal so that when we slide, 
+                            // we slide along the normal of the new floor and not the wall of the step.
+                            *hit.overridable_normal = hit_normal;
+                            grounded_this_frame = true;
+                        }
+                    }
                 }
             },
         ) {
@@ -170,32 +215,27 @@ fn movement(
             character.velocity = move_and_slide_result.new_velocity;
         }
 
-        // Check for floor when previously on the floor and no floor was found during move and slide
-        // to avoid rapid changes to the grounded state
-        if character.floor.is_some() && floor.is_none() {
-            if let Some((movement, hit)) = character_sweep(
-                collider,
-                config.epsilon,
+        if !grounded_this_frame {
+            if let Some((movement, hit_normal)) = ground_check(
+                &character_collider,
+                &config,
                 transform.translation,
-                -character.up,
-                10.0, // arbitrary trace distance
+                character.up,
                 rotation,
                 &spatial_query,
                 &filter,
+                EXAMPLE_GROUND_CHECK_DISTANCE,
+                EXAMPLE_WALKABLE_ANGLE,
             ) {
-                if is_walkable(hit) {
-                    transform.translation -= character.up * movement; // also snap to the floor
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
-                }
+                transform.translation -= movement * Vec3::Y;
+                character.ground = Some(Dir3::new(hit_normal).unwrap_or(Dir3::Y));
             }
         }
-
-        character.floor = floor;
     }
 }
 
-pub struct AccelerateResult {
-    pub new_velocity: Vec3,
+struct AccelerateResult {
+    new_velocity: Vec3,
 }
 
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
@@ -226,12 +266,12 @@ fn accelerate(
     })
 }
 
-pub struct ApplyFrictionResult {
-    pub new_velocity: Vec3,
+struct ApplyFrictionResult {
+    new_velocity: Vec3,
 }
 
 /// Constant acceleration in the opposite direction of velocity.
-pub fn apply_friction(velocity: Vec3, friction: f32, delta: f32) -> Option<ApplyFrictionResult> {
+fn apply_friction(velocity: Vec3, friction: f32, delta: f32) -> Option<ApplyFrictionResult> {
     let speed_sq = velocity.length_squared();
 
     if speed_sq < 1e-4 {
