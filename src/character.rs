@@ -14,7 +14,7 @@ pub const EXAMPLE_FRICTION: f32 = 60.0;
 pub const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
 pub const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 pub const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
-pub const EXAMPLE_STEP_HEIGHT: f32 = 1.0;
+pub const EXAMPLE_STEP_HEIGHT: f32 = 0.25;
 pub const EXAMPLE_GROUND_CHECK_DISTANCE: f32 = 0.1;
 
 // @todo: probably want to improve the ergonomics of these
