@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
@@ -9,7 +9,7 @@ use bevy_enhanced_input::prelude::{ActionState, Actions};
 use crate::{
     camera::MainCamera,
     input::{self, DefaultContext, Jump},
-    move_and_slide::{Floor, MoveAndSlideConfig, floor_sweep, move_and_slide},
+    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
 };
 
 pub struct KCCPlugin;
@@ -66,7 +66,7 @@ impl CoyoteTime {
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Floor>,
+    floor: Option<Dir3>,
     up: Dir3,
 }
 
@@ -171,19 +171,19 @@ fn movement(
             main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
         let max_acceleration = match character.floor {
-            Some(floor) => {
+            Some(floor_normal) => {
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
                 // Make sure velocity is never towards the floor since this makes the jump height inconsistent
-                let downward_vel = character.velocity.dot(*floor.normal).min(0.0);
-                character.velocity -= floor.normal * downward_vel;
+                let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
+                character.velocity -= floor_normal * downward_vel;
 
                 // Project input direction on the floor normal to allow walking down slopes
                 // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
                 // even more so for steep slopes.
                 direction = direction
-                    .reject_from_normalized(*floor.normal)
+                    .reject_from_normalized(*floor_normal)
                     .normalize_or_zero();
 
                 EXAMPLE_FLOOR_ACCELERATION
@@ -222,8 +222,8 @@ fn movement(
         let up = character.up;
 
         // Check if the floor is walkable
-        let is_walkable = |normal: Vec3| {
-            let slope_angle = up.angle_between(normal);
+        let is_walkable = |hit: ShapeHitData| {
+            let slope_angle = up.angle_between(hit.normal1);
             slope_angle < EXAMPLE_WALKABLE_ANGLE
         };
 
@@ -239,12 +239,8 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                if is_walkable(hit.normal1) {
-                    floor = Some(Floor {
-                        entity,
-                        normal: Dir3::new(hit.normal1).unwrap(),
-                        distance: hit.distance, // TODO: use safe distance?
-                    });
+                if is_walkable(hit) {
+                    floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
             },
         ) {
@@ -255,19 +251,19 @@ fn movement(
         // Check for floor when previously on the floor and no floor was found during move and slide
         // to avoid rapid changes to the grounded state
         if character.floor.is_some() && floor.is_none() {
-            if let Some(flr) = floor_sweep(
+            if let Some((movement, hit)) = character_sweep(
                 collider,
                 config.epsilon,
                 transform.translation,
                 -character.up,
-                0.1,
+                10.0, // arbitrary trace distance
                 rotation,
                 &spatial_query,
                 &filter,
             ) {
-                if is_walkable(*flr.normal) {
-                    transform.translation -= character.up * flr.distance; // also snap to the floor
-                    floor = Some(flr);
+                if is_walkable(hit) {
+                    transform.translation -= character.up * movement; // also snap to the floor
+                    floor = Some(Dir3::new(hit.normal1).unwrap());
                 }
             }
         }
