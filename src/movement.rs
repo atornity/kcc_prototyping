@@ -143,7 +143,7 @@ fn movement(
                 );
 
                 if walkable {
-                    // If Dir3::new can't return Err since we have already checked if it's walkable
+                    // Dir3::new won't be Err since we have already checked if it's walkable
                     new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
                 }
 

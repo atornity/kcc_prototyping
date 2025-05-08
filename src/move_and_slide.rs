@@ -142,8 +142,6 @@ pub fn move_and_slide(
             continue;
         }
 
-        // It is possible the user has set the normal to None,
-        // in which case we don't want to slide along it anymore.
         hits.push(hit.normal1);
 
         velocity = solve_collision_planes(velocity, &hits, *original_direction);
