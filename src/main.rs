@@ -1,4 +1,7 @@
-use avian3d::{PhysicsPlugins, prelude::PhysicsDebugPlugin};
+use avian3d::{
+    PhysicsPlugins,
+    prelude::{PhysicsDebugPlugin, PhysicsDiagnosticsPlugin, PhysicsDiagnosticsUiPlugin},
+};
 use bevy::{
     pbr::{Atmosphere, light_consts::lux},
     prelude::*,
@@ -6,7 +9,10 @@ use bevy::{
 };
 use bevy_enhanced_input::prelude::Actions;
 use kcc_prototype::{
-    camera::{CameraPlugin, MainCamera, TargetOf}, character::{EXAMPLE_CHARACTER_CAPSULE_LENGTH, EXAMPLE_CHARACTER_RADIUS}, input::{DefaultContext, InputPlugin}, level::LevelGeneratorPlugin, movement::{Character, KCCPlugin}
+    camera::{CameraPlugin, MainCamera}, character::*, input::{DefaultContext, InputPlugin}, level::LevelGeneratorPlugin, movement::{Character, KCCPlugin},
+    Attachments,
+    camera::FollowOffset,
+    input::{FlyCameraContext, OrbitCameraContext},
 };
 
 fn main() -> AppExit {
@@ -19,6 +25,8 @@ fn main() -> AppExit {
             PhysicsDebugPlugin::default(),
             LevelGeneratorPlugin,
             KCCPlugin,
+            PhysicsDiagnosticsPlugin,
+            PhysicsDiagnosticsUiPlugin,
         ))
         .add_systems(Startup, setup)
         .run()
@@ -29,9 +37,24 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let main_cam = commands
-        .spawn((
-            MainCamera::default(),
+    commands.spawn((
+        Transform::from_xyz(0.0, 10.5, 0.0),
+        Actions::<DefaultContext>::default(),
+        Actions::<FlyCameraContext>::default(),
+        Actions::<OrbitCameraContext>::default(),
+        Character::default(),
+        Mesh3d(meshes.add(Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::WHITE.with_alpha(0.25),
+            alpha_mode: AlphaMode::Blend,
+            ..Default::default()
+        })),
+        Attachments::spawn_one((
+            MainCamera,
+            FollowOffset {
+                absolute: Vec3::Y * 0.75,
+                ..Default::default()
+            },
             Camera {
                 hdr: true,
                 ..Default::default()
@@ -48,20 +71,7 @@ fn setup(
                 ..Default::default()
             },
             Transform::from_xyz(0.0, 0.5, 0.0),
-        ))
-        .id();
-
-    commands.spawn((
-        Transform::from_xyz(0.0, 10.5, 0.0),
-        Actions::<DefaultContext>::default(),
-        Character::default(),
-        TargetOf(main_cam),
-        Mesh3d(meshes.add(Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::WHITE.with_alpha(0.25),
-            alpha_mode: AlphaMode::Blend,
-            ..Default::default()
-        })),
+        )),
     ));
 
     // Sun

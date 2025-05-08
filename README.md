@@ -4,16 +4,17 @@ A minimal environment for prototyping KCCs with procedural and customizable 'lev
 ### Input Bindings
 
 #### General (DefaultContext)
-- **Toggle Camera Mode**: `F1` or gamepad `D-Pad Up`
+- **Toggle View Perspective**: `C` or gamepad `D-Pad Down`
+- **Toggle Fly Camera**: `F` or gamepad `D-Pad Up`
 - **Move**: `WASD` or gamepad left stick
-- **Look**: Mouse motion or gamepad right stick
+- **Look**: Mouse movement or gamepad right stick
 - **Jump**: `Space` or gamepad `East`
 - **Capture Cursor**: Left mouse button
 - **Release Cursor**: `Escape`
 
 #### Fly Camera (FlyCameraContext)
-- **Fly Up**: `Left Shift` or gamepad `East`
-- **Fly Down**: `Left Ctrl` or gamepad `Left Thumb`
+- **Fly Up**: `E` or gamepad `East`
+- **Fly Down**: `Q` or gamepad `Left Thumb`
 
 #### Orbit Camera (OrbitCameraContext)
 - **Zoom**: Mouse wheel

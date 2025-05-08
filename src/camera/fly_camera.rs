@@ -1,68 +1,49 @@
-use crate::input::{self, FlyVerticalMoveDown, FlyVerticalMoveUp, Look};
-use bevy::{input::gamepad::GamepadInput, prelude::*};
+use crate::input::{DefaultContext, Fly, FlyCameraContext, Move};
+use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use std::f32::consts::FRAC_PI_2;
 
-use super::MainCamera;
+use super::Attachments;
 
-pub struct FlyCameraPlugin;
-
-impl Plugin for FlyCameraPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_observer(look)
-            .add_observer(fly)
-            .add_observer(vertical_fly_up)
-            .add_observer(vertical_fly_down);
-    }
+pub(crate) fn plugin(app: &mut App) {
+    app.add_systems(Update, fly_input);
 }
 
-#[derive(Component)]
-pub struct FlyCamera {
-    speed: f32,
-}
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[require(FlySpeed)]
+pub(crate) struct FlyingCamera;
 
-impl Default for FlyCamera {
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+pub(crate) struct FlySpeed(pub f32);
+
+impl Default for FlySpeed {
     fn default() -> Self {
-        Self { speed: 10.0 }
+        Self(10.0)
     }
 }
 
-fn fly(
-    trigger: Trigger<Fired<input::Move>>,
-    camera: Single<(&mut Transform, &FlyCamera)>,
+fn fly_input(
+    targets: Query<(
+        &Actions<DefaultContext>,
+        &Actions<FlyCameraContext>,
+        &Attachments,
+    )>,
+    mut cameras: Query<(&mut Transform, &FlySpeed), With<FlyingCamera>>,
     time: Res<Time>,
 ) {
-    let (mut transform, cam) = camera.into_inner();
-    let direction = transform.rotation * Vec3::new(trigger.value.x, 0.0, -trigger.value.y);
-    transform.translation += direction * cam.speed * time.delta_secs();
-}
+    for (default_actions, fly_actions, attachments) in &targets {
+        let move_input = default_actions.action::<Move>().value().as_axis2d();
+        let fly_input = fly_actions.action::<Fly>().value().as_axis1d();
 
-fn vertical_fly_up(
-    _trigger: Trigger<Fired<FlyVerticalMoveUp>>,
-    camera: Single<(&mut Transform, &FlyCamera)>,
-    time: Res<Time>,
-) {
-    let (mut transform, cam) = camera.into_inner();
-    transform.translation.y += cam.speed * time.delta_secs();
-}
+        if move_input == Vec2::ZERO && fly_input == 0.0 {
+            continue;
+        }
 
-fn vertical_fly_down(
-    _trigger: Trigger<Fired<FlyVerticalMoveDown>>,
-    camera: Single<(&mut Transform, &FlyCamera)>,
-    time: Res<Time>,
-) {
-    let (mut transform, cam) = camera.into_inner();
-    transform.translation.y -= cam.speed * time.delta_secs();
-}
-
-fn look(
-    trigger: Trigger<Fired<Look>>,
-    camera: Single<(&mut Transform, &MainCamera), With<FlyCamera>>,
-) {
-    let (mut transform, main_camera) = camera.into_inner();
-    let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
-    yaw += trigger.value.x.to_radians() * main_camera.sensitivity;
-    pitch += trigger.value.y.to_radians() * main_camera.sensitivity;
-    pitch = pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
-    transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+        let mut iter = cameras.iter_many_mut(attachments.iter());
+        while let Some((mut transform, speed)) = iter.fetch_next() {
+            let direction = transform.rotation * Vec3::new(move_input.x, fly_input, -move_input.y);
+            transform.translation += direction * speed.0 * time.delta_secs();
+        }
+    }
 }

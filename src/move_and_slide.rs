@@ -90,8 +90,8 @@ pub struct MoveAndSlideHit<'a> {
 pub fn move_and_slide(
     spatial_query: &SpatialQuery,
     collider: &Collider,
-    translation: Vec3,
-    velocity: Vec3,
+    mut translation: Vec3,
+    mut velocity: Vec3,
     rotation: Quat,
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
@@ -101,9 +101,6 @@ pub fn move_and_slide(
     let Ok(original_direction) = Dir3::new(velocity) else {
         return None;
     };
-
-    let mut translation = translation;
-    let mut velocity = velocity;
 
     let mut remaining_time = delta_time;
 
