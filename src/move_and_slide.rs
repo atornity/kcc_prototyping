@@ -2,7 +2,6 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
-/// Check if the character is grounded and update floor state accordingly
 /// Returns the safe hit distance and the hit data from the spatial query.
 #[must_use]
 pub fn sweep_check(
@@ -61,24 +60,19 @@ pub struct MoveAndSlideResult {
 pub struct MoveAndSlideHit<'a> {
     /// `move_and_slide` works by substepping. This is the last substep that has occurred, starting from 0.
     pub substep: u8,
-
     /// The hit data from the spatial query.
-    pub shape_hit: ShapeHitData,
-
-    /// You can override the normal from within the `on_hit` callback by setting this value.
-    pub overridable_normal: &'a mut Option<Vec3>,
-
+    pub hit_data: ShapeHitData,
     /// You can override the translation from within the `on_hit` callback by setting this value.
-    pub overridable_translation: &'a mut Vec3,
-
+    pub translation: &'a mut Vec3,
     /// You can override the velocity from within the `on_hit` callback by setting this value.
-    pub overridable_velocity: &'a mut Vec3,
-
+    pub velocity: &'a mut Vec3,
+    /// This is the movement direction that occured within the substep before the hit.
+    pub direction: Dir3,
     /// This is the movement that occured within the substep before the hit.
-    pub motion: Vec3,
-
+    pub motion: f32,
     /// This is the remaining movement within the substep that would have occurred if we didn't hit anything.
-    pub remaining_motion: Vec3,
+    pub remaining_motion: f32,
+    pub remaining_time: &'a mut f32,
 }
 
 // @todo: lets make this take in a struct instead of a bunch of arguments,
@@ -86,6 +80,8 @@ pub struct MoveAndSlideHit<'a> {
 
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
+///
+/// If `on_hit` returns `false` then the body will not slide during that iteration.
 #[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     spatial_query: &SpatialQuery,
@@ -96,7 +92,7 @@ pub fn move_and_slide(
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
     delta_time: f32,
-    mut on_hit: impl FnMut(&mut MoveAndSlideHit),
+    mut on_hit: impl FnMut(&mut MoveAndSlideHit) -> bool,
 ) -> Option<MoveAndSlideResult> {
     let Ok(original_direction) = Dir3::new(velocity) else {
         return None;
@@ -126,30 +122,29 @@ pub fn move_and_slide(
             break;
         };
 
-        let mut hit_normal = Some(hit.normal1);
-
         // Progress time by the movement amount
         remaining_time *= 1.0 - safe_movement / max_distance;
 
         // Move the transform to just before the point of collision
         translation += direction * safe_movement;
-        
-        // Trigger callbacks
-        on_hit(&mut MoveAndSlideHit {
-            substep,
-            shape_hit: hit,
-            overridable_normal: &mut hit_normal,
-            overridable_translation: &mut translation,
-            overridable_velocity: &mut velocity,
-            motion: direction * safe_movement,
-            remaining_motion: direction * (max_distance - safe_movement),
-        });
 
-        // It is possible the user has set the normal to None, 
-        // in which case we don't want to slide along it anymore.
-        if let Some(normal) = hit_normal {
-            hits.push(normal);
+        // Trigger callbacks
+        if !on_hit(&mut MoveAndSlideHit {
+            substep,
+            hit_data: hit,
+            translation: &mut translation,
+            velocity: &mut velocity,
+            direction,
+            motion: safe_movement,
+            remaining_motion: max_distance - safe_movement,
+            remaining_time: &mut remaining_time,
+        }) {
+            continue;
         }
+
+        // It is possible the user has set the normal to None,
+        // in which case we don't want to slide along it anymore.
+        hits.push(hit.normal1);
 
         velocity = solve_collision_planes(velocity, &hits, *original_direction);
 
