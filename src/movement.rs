@@ -4,11 +4,11 @@ use avian3d::prelude::{
     Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
-use bevy_enhanced_input::prelude::{ActionState, Actions};
+use bevy_enhanced_input::prelude::Actions;
 
 use crate::{
     camera::MainCamera,
-    input::{self, DefaultContext, Jump},
+    input::{self, DefaultContext},
     move_and_slide::{Floor, MoveAndSlideConfig, floor_sweep, move_and_slide},
 };
 
@@ -95,6 +95,9 @@ fn movement(
     spatial_query: SpatialQuery,
 ) {
     let main_camera_transform = main_camera.into_inner();
+    for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
+        if character.grounded() {
+            character.jump(EXAMPLE_JUMP_IMPULSE);
         }
 
         // Get the raw 2D input vector
