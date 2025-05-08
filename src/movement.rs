@@ -1,15 +1,16 @@
 use std::f32::consts::PI;
 
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
 use crate::{
     camera::MainCamera,
+    floor::{Floor, find_floor},
     input::{self, DefaultContext, Jump},
-    move_and_slide::{Floor, MoveAndSlideConfig, character_sweep, move_and_slide},
+    move_and_slide::{MoveAndSlideConfig, move_and_slide},
 };
 
 pub struct KCCPlugin;
@@ -145,7 +146,7 @@ fn movement(
             slope_angle < EXAMPLE_WALKABLE_ANGLE
         };
 
-        let mut floor = None;
+        let mut new_floor = None;
 
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
@@ -158,7 +159,7 @@ fn movement(
             time.delta_secs(),
             |hit| {
                 if is_walkable(hit.normal1) {
-                    floor = Some(Floor {
+                    new_floor = Some(Floor {
                         entity,
                         normal: Dir3::new(hit.normal1).unwrap(),
                         distance: hit.distance, // TODO: use safe distance?
@@ -172,25 +173,23 @@ fn movement(
 
         // Check for floor when previously on the floor and no floor was found during move and slide
         // to avoid rapid changes to the grounded state
-        if character.floor.is_some() && floor.is_none() {
-            if let Some((movement, hit)) = character_sweep(
-                collider,
-                config.epsilon,
-                transform.translation,
-                -character.up,
-                10.0, // arbitrary trace distance
-                rotation,
+        if character.floor.is_some() && new_floor.is_none() {
+            if let Some(floor) = find_floor(
                 &spatial_query,
+                collider,
+                transform.translation,
+                rotation,
+                character.up,
+                10.0, // arbitrary trace distance
+                config.epsilon,
+                EXAMPLE_WALKABLE_ANGLE,
                 &filter,
             ) {
-                if is_walkable(hit) {
-                    transform.translation -= character.up * movement; // also snap to the floor
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
-                }
+                new_floor = Some(floor);
             }
         }
 
-        character.floor = floor;
+        character.floor = new_floor;
     }
 }
 

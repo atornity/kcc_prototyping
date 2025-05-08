@@ -2,22 +2,15 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
-#[derive(Reflect, Debug, Clone, Copy)]
-pub(crate) struct Floor {
-    pub entity: Entity,
-    pub normal: Dir3,
-    pub distance: f32,
-}
-
 #[must_use]
 pub fn character_sweep(
+    spatial_query: &SpatialQuery,
     collider: &Collider,
-    epsilon: f32,
     origin: Vec3,
+    rotation: Quat,
     direction: Dir3,
     max_distance: f32,
-    rotation: Quat,
-    spatial_query: &SpatialQuery,
+    epsilon: f32,
     filter: &SpatialQueryFilter,
 ) -> Option<(f32, ShapeHitData)> {
     let hit = spatial_query.cast_shape(
@@ -89,13 +82,13 @@ pub fn move_and_slide(
         };
 
         let Some((safe_movement, hit)) = character_sweep(
+            spatial_query,
             collider,
-            config.epsilon,
             translation,
+            rotation,
             direction,
             max_distance,
-            rotation,
-            spatial_query,
+            config.epsilon,
             filter,
         ) else {
             // No collision, move the full remaining distance
