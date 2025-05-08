@@ -12,8 +12,6 @@ pub(crate) struct Floor {
 
 impl Floor {
     /// Construct a new [`Floor`] if the `normal` is walkable with the given `walkable_angle` and `up` direction.
-    ///
-    /// Returns `None` otherwise.
     pub fn new_if_walkable<D: TryInto<Dir3>>(
         entity: Entity,
         normal: D,

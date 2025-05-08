@@ -138,14 +138,6 @@ fn movement(
 
         let config = MoveAndSlideConfig::default();
 
-        let up = character.up;
-
-        // Check if the floor is walkable
-        let is_walkable = |normal: Vec3| {
-            let slope_angle = up.angle_between(normal);
-            slope_angle < EXAMPLE_WALKABLE_ANGLE
-        };
-
         let mut new_floor = None;
 
         if let Some(move_and_slide_result) = move_and_slide(
@@ -158,13 +150,13 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                if is_walkable(hit.normal1) {
-                    new_floor = Some(Floor {
-                        entity,
-                        normal: Dir3::new(hit.normal1).unwrap(),
-                        distance: hit.distance, // TODO: use safe distance?
-                    });
-                }
+                new_floor = Floor::new_if_walkable(
+                    entity,
+                    hit.normal1,
+                    (hit.distance - config.epsilon).max(0.0), // TODO: callback should probably return safe distance
+                    character.up,
+                    EXAMPLE_WALKABLE_ANGLE,
+                );
             },
         ) {
             transform.translation = move_and_slide_result.new_translation;
