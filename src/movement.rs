@@ -16,7 +16,45 @@ pub struct KCCPlugin;
 
 impl Plugin for KCCPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, movement);
+        app.add_systems(FixedUpdate, (movement, update_coyote_time).chain());
+        app.add_systems(Update, coyote_jump_input);
+    }
+}
+
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+pub(crate) struct CoyoteTime {
+    air_time: f32,
+    jump_time: f32,
+    jumped: bool,
+}
+
+impl Default for CoyoteTime {
+    fn default() -> Self {
+        Self {
+            air_time: 0.0,
+            jump_time: f32::INFINITY,
+            jumped: false,
+        }
+    }
+}
+
+impl CoyoteTime {
+    pub fn can_jump(&self, grounded: bool, land_buffer: f32, ledge_buffer: f32) -> bool {
+        let land = grounded && self.jump_time <= land_buffer;
+        let ledge =
+            !grounded && !self.jumped && self.air_time <= ledge_buffer && self.jump_time <= 1e-8;
+
+        land || ledge
+    }
+
+    pub fn try_jump(&mut self, grounded: bool, land_buffer: f32, ledge_buffer: f32) -> bool {
+        if self.can_jump(grounded, land_buffer, ledge_buffer) {
+            self.jumped = true;
+            self.jump_time = f32::INFINITY;
+            return true;
+        }
+        false
     }
 }
 
@@ -24,6 +62,7 @@ impl Plugin for KCCPlugin {
 #[require(
     RigidBody = RigidBody::Kinematic,
     Collider = Capsule3d::new(0.35, 1.0),
+    CoyoteTime,
 )]
 pub struct Character {
     velocity: Vec3,
@@ -77,6 +116,28 @@ const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
 const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
+fn coyote_jump_input(mut query: Query<(&mut CoyoteTime, &Actions<DefaultContext>)>) {
+    for (mut coyote, actions) in &mut query {
+        if actions.action::<Jump>().state() == ActionState::Fired {
+            coyote.jump_time = 0.0;
+        }
+    }
+}
+
+fn update_coyote_time(mut query: Query<(&mut CoyoteTime, &Character)>, time: Res<Time>) {
+    for (mut coyote, character) in &mut query {
+        match character.grounded() {
+            true => {
+                coyote.jumped = false;
+                coyote.air_time = 0.0
+            }
+            false => coyote.air_time += time.delta_secs(),
+        }
+
+        coyote.jump_time += time.delta_secs()
+    }
+}
+
 fn movement(
     mut q_kcc: Query<
         (
@@ -86,6 +147,7 @@ fn movement(
             &mut Character,
             &Collider,
             &CollisionLayers,
+            &mut CoyoteTime,
         ),
         Without<Frozen>,
     >,
@@ -95,6 +157,10 @@ fn movement(
     spatial_query: SpatialQuery,
 ) {
     let main_camera_transform = main_camera.into_inner();
+    for (entity, actions, mut transform, mut character, collider, layers, mut coyote) in &mut q_kcc
+    {
+        if coyote.try_jump(character.grounded(), 0.05, 0.2) {
+            character.jump(EXAMPLE_JUMP_IMPULSE);
         }
 
         // Get the raw 2D input vector
