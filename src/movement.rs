@@ -86,15 +86,15 @@ fn movement(
                 character.velocity += friction;
 
                 // // Make sure velocity is never towards the floor since this makes the jump height inconsistent
-                // let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
-                // character.velocity -= floor_normal * downward_vel;
+                let downward_vel = character.velocity.dot(*floor_normal).min(0.0);
+                character.velocity -= floor_normal * downward_vel;
 
                 // Project input direction on the floor normal to allow walking down slopes
                 // TODO: this is wrong, walking diagonally up/down slopes will be slightly off direction wise,
                 // even more so for steep slopes.
-                // direction = direction
-                //     .reject_from_normalized(*floor_normal)
-                //     .normalize_or_zero();
+                direction = direction
+                    .reject_from_normalized(*floor_normal)
+                    .normalize_or_zero();
 
                 EXAMPLE_GROUND_ACCELERATION
             }
