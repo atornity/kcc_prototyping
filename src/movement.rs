@@ -150,13 +150,15 @@ fn movement(
             &filter,
             time.delta_secs(),
             |hit| {
-                new_floor = Floor::new_if_walkable(
+                if let Some(floor) = Floor::new_if_walkable(
                     entity,
                     hit.normal1,
                     (hit.distance - config.epsilon).max(0.0), // TODO: callback should probably return safe distance
                     character.up,
                     EXAMPLE_WALKABLE_ANGLE,
-                );
+                ) {
+                    new_floor = Some(floor);
+                }
             },
         ) {
             transform.translation = move_and_slide_result.new_translation;
