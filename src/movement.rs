@@ -185,6 +185,7 @@ fn movement(
                 EXAMPLE_WALKABLE_ANGLE,
                 &filter,
             ) {
+                transform.translation -= character.up * floor.distance;
                 new_floor = Some(floor);
             }
         }
