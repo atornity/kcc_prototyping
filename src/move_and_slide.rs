@@ -97,9 +97,12 @@ pub fn move_and_slide(
     // Callback that is called when a hit occurs.
     // If `false` is returned then the body will not slide during that iteration.
     mut on_hit: impl FnMut(&mut MoveAndSlideHit) -> bool,
-) -> Option<MoveAndSlideResult> {
+) -> MoveAndSlideResult {
     let Ok(original_direction) = Dir3::new(velocity) else {
-        return None;
+        return MoveAndSlideResult {
+            new_translation: translation,
+            new_velocity: velocity,
+        };
     };
 
     let mut remaining_time = delta_time;
@@ -157,41 +160,10 @@ pub fn move_and_slide(
         }
     }
 
-    Some(MoveAndSlideResult {
+    MoveAndSlideResult {
         new_translation: translation,
         new_velocity: velocity,
-    })
-}
-
-pub fn move_and_collide(
-    collider: &Collider,
-    origin: Vec3,
-    rotation: Quat,
-    motion: Vec3,
-    epsilon: f32,
-    spatial_query: &SpatialQuery,
-    filter: &SpatialQueryFilter,
-) -> (Vec3, Option<ShapeHitData>) {
-    let Ok((direction, max_distance)) = Dir3::new_and_length(motion) else {
-        return (Vec3::ZERO, None);
-    };
-
-    let Some((safe_distance, hit)) = sweep_check(
-        collider,
-        epsilon,
-        origin,
-        direction,
-        max_distance,
-        rotation,
-        spatial_query,
-        filter,
-    ) else {
-        // No collision, move the full distance
-        return (direction * max_distance, None);
-    };
-
-    // Move to just before the point of collision
-    (direction * safe_distance, Some(hit))
+    }
 }
 
 fn similar_plane(normal1: Vec3, normal2: Vec3) -> bool {

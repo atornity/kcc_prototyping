@@ -1,7 +1,4 @@
-use avian3d::{
-    PhysicsPlugins,
-    prelude::{PhysicsDebugPlugin, PhysicsDiagnosticsPlugin, PhysicsDiagnosticsUiPlugin},
-};
+use avian3d::{PhysicsPlugins, prelude::*};
 use bevy::{
     pbr::{Atmosphere, light_consts::lux},
     prelude::*,
