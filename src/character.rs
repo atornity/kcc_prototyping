@@ -8,14 +8,14 @@ use crate::move_and_slide::*;
 pub const EXAMPLE_CHARACTER_RADIUS: f32 = 0.35;
 pub const EXAMPLE_CHARACTER_CAPSULE_LENGTH: f32 = 1.0;
 pub const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
-pub const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
+pub const EXAMPLE_GROUND_ACCELERATION: f32 = 100.0;
 pub const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
 pub const EXAMPLE_FRICTION: f32 = 60.0;
 pub const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
 pub const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 pub const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 pub const EXAMPLE_STEP_HEIGHT: f32 = 0.25;
-pub const EXAMPLE_FLOOR_CHECK_DISTANCE: f32 = 0.1;
+pub const EXAMPLE_GROUND_CHECK_DISTANCE: f32 = 0.1;
 
 // @todo: probably want to improve the ergonomics of these
 // functions by accepting a struct instead of a bunch of arguments,
@@ -109,7 +109,7 @@ pub fn try_climb_step(
 /// Check if the character is grounded and update ground state accordingly
 /// Applies a downward sweep to check for a valid ground.
 /// Returns the new translation after snapping to the ground
-pub fn floor_check(
+pub fn ground_check(
     collider: &Collider,
     config: &MoveAndSlideConfig,
     translation: Vec3,

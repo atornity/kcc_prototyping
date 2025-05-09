@@ -20,6 +20,7 @@ pub struct KCCPlugin;
 impl Plugin for KCCPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, movement);
+        app.add_systems(Update, interpolation);
     }
 }
 
@@ -30,16 +31,18 @@ impl Plugin for KCCPlugin {
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Dir3>,
+    ground: Option<Dir3>,
     up: Dir3,
+    previous_transform: Transform,
 }
 
 impl Default for Character {
     fn default() -> Self {
         Self {
             velocity: Vec3::ZERO,
-            floor: None,
+            ground: None,
             up: Dir3::Y,
+            previous_transform: Transform::default(),
         }
     }
 }
@@ -69,7 +72,7 @@ fn movement(
     let main_camera_transform = main_camera.into_inner();
     for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
         if actions.action::<Jump>().state() == ActionState::Fired {
-            if character.floor.take().is_some() {
+            if character.ground.take().is_some() {
                 // Override downard velocity
                 let down_vel = character.velocity.dot(*character.up).min(0.0);
                 let jump_impulse = character.up * (EXAMPLE_JUMP_IMPULSE - down_vel);
@@ -87,12 +90,12 @@ fn movement(
         // Rotate the movement direction vector by only the camera's yaw
         let direction = yaw_rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
 
-        let max_acceleration = match character.floor {
+        let max_acceleration = match character.ground {
             Some(_) => {
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
-                EXAMPLE_FLOOR_ACCELERATION
+                EXAMPLE_GROUND_ACCELERATION
             }
             None => {
                 // Apply gravity when not grounded
@@ -126,7 +129,7 @@ fn movement(
         let config = MoveAndSlideConfig::default();
 
         // We need to store the new ground for the ground check to work properly
-        let mut new_floor = None;
+        let mut new_ground = None;
 
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
@@ -146,10 +149,10 @@ fn movement(
 
                 if walkable {
                     // Dir3::new won't be Err since we have already checked if it's walkable
-                    new_floor = Some(Dir3::new(movement.hit_data.normal1).unwrap());
+                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
                 }
 
-                let grounded = character.floor.is_some() || new_floor.is_some();
+                let grounded = character.ground.is_some() || new_ground.is_some();
 
                 // In order to try step up we need to be grounded and hitting a "wall".
                 if walkable || !grounded {
@@ -183,7 +186,7 @@ fn movement(
                     step_motion,
                     rotation,
                     character.up,
-                    EXAMPLE_STEP_HEIGHT + EXAMPLE_FLOOR_CHECK_DISTANCE,
+                    EXAMPLE_STEP_HEIGHT + EXAMPLE_GROUND_CHECK_DISTANCE,
                     config.epsilon,
                     &filter,
                 ) else {
@@ -204,7 +207,7 @@ fn movement(
                 // We need to override the translation here because the we stepped up
                 *movement.translation = step_offset;
 
-                new_floor = Some(Dir3::new(step_hit.normal1).unwrap());
+                new_ground = Some(Dir3::new(step_hit.normal1).unwrap());
 
                 // Subtract the stepped distance from remaining time to avoid moving further
                 let move_time = (forward + inward) * time.delta_secs();
@@ -218,8 +221,8 @@ fn movement(
             character.velocity = move_and_slide_result.new_velocity;
         }
 
-        if character.floor.is_some() && new_floor.is_none() {
-            if let Some((movement, hit)) = floor_check(
+        if character.ground.is_some() && new_ground.is_none() {
+            if let Some((movement, hit)) = ground_check(
                 &collider,
                 &config,
                 transform.translation,
@@ -227,18 +230,28 @@ fn movement(
                 rotation,
                 &spatial_query,
                 &filter,
-                EXAMPLE_FLOOR_CHECK_DISTANCE,
+                EXAMPLE_GROUND_CHECK_DISTANCE,
                 EXAMPLE_WALKABLE_ANGLE,
             ) {
                 transform.translation -= movement * character.up;
-                new_floor = Some(Dir3::new(hit.normal1).unwrap());
+                new_ground = Some(Dir3::new(hit.normal1).unwrap());
             }
         }
 
-        character.floor = new_floor;
+        character.ground = new_ground;
+        character.previous_transform = *transform;
     }
+
 }
 
+fn interpolation(
+    mut q_kcc: Query<(&mut Transform, &Character)>,
+    fixed_time: Res<Time<Fixed>>,
+) {
+    for (mut transform, character) in &mut q_kcc {
+        transform.translation = transform.translation.lerp(character.previous_transform.translation, fixed_time.overstep_fraction());
+    }
+}
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
 #[must_use]
 fn acceleration(
