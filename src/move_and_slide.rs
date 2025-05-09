@@ -163,6 +163,37 @@ pub fn move_and_slide(
     })
 }
 
+pub fn move_and_collide(
+    collider: &Collider,
+    origin: Vec3,
+    rotation: Quat,
+    motion: Vec3,
+    epsilon: f32,
+    spatial_query: &SpatialQuery,
+    filter: &SpatialQueryFilter,
+) -> (Vec3, Option<ShapeHitData>) {
+    let Ok((direction, max_distance)) = Dir3::new_and_length(motion) else {
+        return (Vec3::ZERO, None);
+    };
+
+    let Some((safe_distance, hit)) = sweep_check(
+        collider,
+        epsilon,
+        origin,
+        direction,
+        max_distance,
+        rotation,
+        spatial_query,
+        filter,
+    ) else {
+        // No collision, move the full distance
+        return (direction * max_distance, None);
+    };
+
+    // Move to just before the point of collision
+    (direction * safe_distance, Some(hit))
+}
+
 fn similar_plane(normal1: Vec3, normal2: Vec3) -> bool {
     normal1.dot(normal2) > SIMILARITY_THRESHOLD
 }

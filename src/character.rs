@@ -138,7 +138,11 @@ pub fn ground_check(
     Some((safe_distance, hit))
 }
 
-/// Projects a movement vector on a plane.
+/// Projects a vector on a plane normal.
+///
+/// The returned vector has different properties depending on whether the plane is walkable or not:
+/// - **walkable**: the vector will be aligned with the plane `normal` with the horizontal direction unchanged
+/// - **non-walkable**: the vector will be aligned with both the plane `normal` and `up` direction
 ///
 /// **Panics** if the `normal` is zero, infinite or `NaN`.
 #[track_caller]
@@ -150,7 +154,7 @@ pub fn project_motion(
 ) -> Vec3 {
     let normal = normal
         .try_into()
-        .unwrap_or_else(|_| panic!("normal must be finite and non zero"));
+        .unwrap_or_else(|_| panic!("normal must not be zero, infinite or NaN"));
 
     match is_walkable(*normal, up, walkable_angle) {
         true => project_motion_on_ground(motion, normal, up),
@@ -158,8 +162,17 @@ pub fn project_motion(
     }
 }
 
-/// Projects a movement vector on a walkable plane
-pub fn project_motion_on_ground(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
+/// Projects a vector on a walkable plane.
+///
+/// The returned vector will be aligned with the plane `normal` with the horizontal direction unchanged.
+///
+/// **Panics** if the `normal` is zero, infinite or `NaN`.
+#[track_caller]
+pub fn project_motion_on_ground(motion: Vec3, normal: impl TryInto<Dir3>, up: Dir3) -> Vec3 {
+    let normal = normal
+        .try_into()
+        .unwrap_or_else(|_| panic!("normal must not be zero, infinite or NaN"));
+
     // Split input vector into vertical and horizontal components
     let mut vertical = motion.project_onto(*up);
     let mut horizontal = motion - vertical;
@@ -176,7 +189,8 @@ pub fn project_motion_on_ground(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
     // Calculate the horizontal direction along the slope
     // This gives us a vector that follows the slope but maintains original horizontal intent
     let Ok(horizontal_direction) = Dir3::new(tangent.cross(*normal)) else {
-        return vertical + horizontal; // Horizontal direction is perpendicular with the ground normal
+        // Horizontal direction is already perpendicular with the ground normal
+        return vertical + horizontal;
     };
 
     // Project horizontal movement onto the calculated direction
@@ -185,12 +199,24 @@ pub fn project_motion_on_ground(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
     vertical + horizontal
 }
 
-/// Projects a movement vector on a non-walkable plane.
-pub fn project_motion_on_wall(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
+/// Projects a vector on a non-walkable plane.
+///
+/// The returned vector will be aligned with both the `normal` and `up` direction.
+///
+/// This ensures the character is not able to slide up slopes that are not walkable.
+///
+/// **Panics** if the `normal` is zero, infinite or `NaN`.
+#[track_caller]
+pub fn project_motion_on_wall(motion: Vec3, normal: impl TryInto<Dir3>, up: Dir3) -> Vec3 {
+    let normal = normal
+        .try_into()
+        .unwrap_or_else(|_| panic!("normal must not be zero, infinite or NaN"));
+
     // Split input vector into vertical and horizontal components
     let mut vertical = motion.project_onto(*up);
     let mut horizontal = motion - vertical;
 
+    // Project the vertical part on the plane normal
     vertical = vertical.reject_from_normalized(*normal);
 
     let Ok(tangent) = Dir3::new(normal.cross(*up)) else {

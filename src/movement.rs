@@ -127,15 +127,13 @@ fn movement(
         };
 
         // accelerate in the movement direction
-        let acceleration = acceleration(
+        let mut move_accel = acceleration(
             character.velocity,
             direction,
             max_acceleration,
             EXAMPLE_MOVEMENT_SPEED,
             time.delta_secs(),
         );
-
-        character.velocity += acceleration;
 
         let rotation = transform.rotation;
 
@@ -149,38 +147,45 @@ fn movement(
 
         let config = MoveAndSlideConfig::default();
 
-        // Sweep in acceleration direction to project the movement motion
-        if let Ok((direction, max_distance)) =
-            Dir3::new_and_length(acceleration * time.delta_secs())
-        {
-            match sweep_check(
-                collider,
-                config.epsilon,
-                transform.translation,
-                direction,
-                max_distance,
-                rotation,
-                &spatial_query,
-                &filter,
-            ) {
-                Some((safe_distance, hit)) => {
-                    character.velocity = project_motion(
-                        character.velocity,
-                        hit.normal1,
-                        character.up,
-                        EXAMPLE_WALKABLE_ANGLE,
-                    );
-                    transform.translation += direction * safe_distance;
-                }
-                None => {
-                    transform.translation += direction * max_distance;
-                }
-            }
-        }
-
         // We need to store the new ground for the ground check to work properly
         let mut new_ground = None;
 
+        let up_direction = character.up;
+
+        let mut set_ground_if_walkable = |normal: Vec3| {
+            if is_walkable(normal, up_direction, EXAMPLE_WALKABLE_ANGLE) {
+                new_ground = Some(Dir3::new(normal).unwrap());
+            }
+        };
+
+        // move and slide in the movement direction
+        if let Some(movement) = move_and_slide(
+            &spatial_query,
+            collider,
+            transform.translation,
+            move_accel,
+            rotation,
+            config,
+            &filter,
+            time.delta_secs(),
+            |hit| {
+                set_ground_if_walkable(hit.hit_data.normal1);
+
+                *hit.velocity = project_motion(
+                    *hit.velocity,
+                    hit.hit_data.normal1,
+                    character.up,
+                    EXAMPLE_WALKABLE_ANGLE,
+                );
+
+                false
+            },
+        ) {
+            transform.translation = movement.new_translation;
+            move_accel = movement.new_velocity;
+        }
+
+        // move and slide in velocity direction
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
             &collider,
@@ -200,6 +205,15 @@ fn movement(
                 if walkable {
                     // Dir3::new won't be Err since we have already checked if it's walkable
                     new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
+
+                    *movement.velocity = project_motion_on_ground(
+                        *movement.velocity,
+                        movement.hit_data.normal1,
+                        character.up,
+                    );
+
+                    // Avoid sliding down walkable slopes when landing on the ground
+                    return false;
                 }
 
                 let grounded = character.ground.is_some() || new_ground.is_some();
@@ -271,15 +285,7 @@ fn movement(
             character.velocity = move_and_slide_result.new_velocity;
         }
 
-        // blabla
-        // if new_ground.is_some() {
-        //     let speed = character.velocity.length();
-        //     character.velocity = character
-        //         .velocity
-        //         .reject_from_normalized(*character.up)
-        //         .normalize_or_zero()
-        //         * speed;
-        // }
+        character.velocity += move_accel;
 
         if character.ground.is_some() && new_ground.is_none() {
             if let Some((movement, hit)) = ground_check(
@@ -299,6 +305,17 @@ fn movement(
         }
 
         character.ground = new_ground;
+
+        // blabla
+        // if character.grounded() {
+        //     let speed = character.velocity.length();
+        //     character.velocity = character
+        //         .velocity
+        //         .reject_from_normalized(*character.up)
+        //         .normalize_or_zero()
+        //         * speed;
+        //     // character.velocity = character.velocity.reject_from_normalized(*character.up);
+        // }
     }
 }
 

@@ -32,7 +32,7 @@ impl Default for SpringArm {
             distance: 4.0,
             target_distance: 4.0,
             recover_speed: 6.0,
-            collision_radius: 0.2,
+            collision_radius: 0.1,
             filters: LayerMask::ALL,
         }
     }
