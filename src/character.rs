@@ -137,3 +137,68 @@ pub fn ground_check(
 
     Some((safe_distance, hit))
 }
+
+/// Projects a movement vector on a plane.
+///
+/// **Panics** if the `normal` is zero, infinite or `NaN`.
+#[track_caller]
+pub fn project_motion(
+    motion: Vec3,
+    normal: impl TryInto<Dir3>,
+    up: Dir3,
+    walkable_angle: f32,
+) -> Vec3 {
+    let normal = normal
+        .try_into()
+        .unwrap_or_else(|_| panic!("normal must be finite and non zero"));
+
+    match is_walkable(*normal, up, walkable_angle) {
+        true => project_motion_on_ground(motion, normal, up),
+        false => project_motion_on_wall(motion, normal, up),
+    }
+}
+
+/// Projects a movement vector on a walkable plane
+pub fn project_motion_on_ground(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
+    // Split input vector into vertical and horizontal components
+    let mut vertical = motion.project_onto(*up);
+    let mut horizontal = motion - vertical;
+
+    // Remove downward velocity
+    if vertical.dot(*up) < 0.0 {
+        vertical = Vec3::ZERO;
+    }
+
+    let Ok(tangent) = Dir3::new(horizontal.cross(*up)) else {
+        return vertical; // No horizontal velocity
+    };
+
+    // Calculate the horizontal direction along the slope
+    // This gives us a vector that follows the slope but maintains original horizontal intent
+    let Ok(horizontal_direction) = Dir3::new(tangent.cross(*normal)) else {
+        return vertical + horizontal; // Horizontal direction is perpendicular with the ground normal
+    };
+
+    // Project horizontal movement onto the calculated direction
+    horizontal = horizontal.project_onto_normalized(*horizontal_direction);
+
+    vertical + horizontal
+}
+
+/// Projects a movement vector on a non-walkable plane.
+pub fn project_motion_on_wall(motion: Vec3, normal: Dir3, up: Dir3) -> Vec3 {
+    // Split input vector into vertical and horizontal components
+    let mut vertical = motion.project_onto(*up);
+    let mut horizontal = motion - vertical;
+
+    vertical = vertical.reject_from_normalized(*normal);
+
+    let Ok(tangent) = Dir3::new(normal.cross(*up)) else {
+        return vertical + horizontal; // This is not a wall
+    };
+
+    // Project horizontal movement along the wall tangent
+    horizontal = horizontal.project_onto_normalized(*tangent);
+
+    vertical + horizontal
+}

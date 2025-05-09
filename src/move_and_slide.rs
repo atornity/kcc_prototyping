@@ -1,5 +1,6 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
+
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
 /// Returns the safe hit distance and the hit data from the spatial query.

@@ -134,6 +134,7 @@ fn movement(
             EXAMPLE_MOVEMENT_SPEED,
             time.delta_secs(),
         );
+
         character.velocity += acceleration;
 
         let rotation = transform.rotation;
@@ -147,6 +148,35 @@ fn movement(
         filter.excluded_entities.extend(sensors);
 
         let config = MoveAndSlideConfig::default();
+
+        // Sweep in acceleration direction to project the movement motion
+        if let Ok((direction, max_distance)) =
+            Dir3::new_and_length(acceleration * time.delta_secs())
+        {
+            match sweep_check(
+                collider,
+                config.epsilon,
+                transform.translation,
+                direction,
+                max_distance,
+                rotation,
+                &spatial_query,
+                &filter,
+            ) {
+                Some((safe_distance, hit)) => {
+                    character.velocity = project_motion(
+                        character.velocity,
+                        hit.normal1,
+                        character.up,
+                        EXAMPLE_WALKABLE_ANGLE,
+                    );
+                    transform.translation += direction * safe_distance;
+                }
+                None => {
+                    transform.translation += direction * max_distance;
+                }
+            }
+        }
 
         // We need to store the new ground for the ground check to work properly
         let mut new_ground = None;
@@ -218,8 +248,8 @@ fn movement(
                     return true;
                 }
 
-                // Make sure velocity is not upwards after stepping. This is because if 
-                // we're a capsule, the roundness of it will cause an upward velocity, 
+                // Make sure velocity is not upwards after stepping. This is because if
+                // we're a capsule, the roundness of it will cause an upward velocity,
                 // giving us a launching up effect that we don't want.
                 let up_vel = movement.translation.dot(*character.up).max(0.0);
                 *movement.velocity -= character.up * up_vel;
@@ -240,6 +270,16 @@ fn movement(
             transform.translation = move_and_slide_result.new_translation;
             character.velocity = move_and_slide_result.new_velocity;
         }
+
+        // blabla
+        // if new_ground.is_some() {
+        //     let speed = character.velocity.length();
+        //     character.velocity = character
+        //         .velocity
+        //         .reject_from_normalized(*character.up)
+        //         .normalize_or_zero()
+        //         * speed;
+        // }
 
         if character.ground.is_some() && new_ground.is_none() {
             if let Some((movement, hit)) = ground_check(
