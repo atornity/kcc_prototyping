@@ -20,7 +20,6 @@ pub struct KCCPlugin;
 impl Plugin for KCCPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, movement);
-        app.add_systems(Update, interpolation);
     }
 }
 
@@ -33,7 +32,6 @@ pub struct Character {
     velocity: Vec3,
     ground: Option<Dir3>,
     up: Dir3,
-    previous_transform: Transform,
 }
 
 impl Character {
@@ -68,7 +66,6 @@ impl Default for Character {
             velocity: Vec3::ZERO,
             ground: None,
             up: Dir3::Y,
-            previous_transform: Transform::default(),
         }
     }
 }
@@ -221,8 +218,8 @@ fn movement(
                     return true;
                 }
 
-                // Make sure velocity is not upwards after stepping. This is because if
-                // we're a capsule, the roundness of it will cause an upward velocity,
+                // Make sure velocity is not upwards after stepping. This is because if 
+                // we're a capsule, the roundness of it will cause an upward velocity, 
                 // giving us a launching up effect that we don't want.
                 let up_vel = movement.translation.dot(*character.up).max(0.0);
                 *movement.velocity -= character.up * up_vel;
@@ -262,19 +259,9 @@ fn movement(
         }
 
         character.ground = new_ground;
-        character.previous_transform = *transform;
-    }
-
-}
-
-fn interpolation(
-    mut q_kcc: Query<(&mut Transform, &Character)>,
-    fixed_time: Res<Time<Fixed>>,
-) {
-    for (mut transform, character) in &mut q_kcc {
-        transform.translation = transform.translation.lerp(character.previous_transform.translation, fixed_time.overstep_fraction());
     }
 }
+
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
 #[must_use]
 fn acceleration(
