@@ -15,7 +15,7 @@ pub const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
 pub const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
 pub const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 pub const EXAMPLE_STEP_HEIGHT: f32 = 0.25;
-pub const EXAMPLE_GROUND_CHECK_DISTANCE: f32 = 0.1;
+pub const EXAMPLE_FLOOR_CHECK_DISTANCE: f32 = 0.1;
 
 // @todo: probably want to improve the ergonomics of these
 // functions by accepting a struct instead of a bunch of arguments,
@@ -109,7 +109,7 @@ pub fn try_climb_step(
 /// Check if the character is grounded and update ground state accordingly
 /// Applies a downward sweep to check for a valid ground.
 /// Returns the new translation after snapping to the ground
-pub fn ground_check(
+pub fn floor_check(
     collider: &Collider,
     config: &MoveAndSlideConfig,
     translation: Vec3,
@@ -117,7 +117,7 @@ pub fn ground_check(
     rotation: Quat,
     spatial_query: &SpatialQuery,
     filter: &SpatialQueryFilter,
-    ground_check_distance: f32,
+    floor_check_distance: f32,
     walkable_angle: f32,
 ) -> Option<(f32, ShapeHitData)> {
     let (safe_distance, hit) = sweep_check(
@@ -125,7 +125,7 @@ pub fn ground_check(
         config.epsilon,
         translation,
         -up,
-        ground_check_distance,
+        floor_check_distance,
         rotation,
         spatial_query,
         filter,
