@@ -111,7 +111,7 @@ fn bind_default_context_actions(
         // --- Camera Look (Used by FPS, potentially others if not overridden) ---
         actions.bind::<Look>().to((
             Input::mouse_motion().with_modifiers((Scale::splat(0.05), Negate::all())),
-            Axial::right_stick().with_modifiers_each((Negate::x(), AtLeast(0.2))),
+            Axial::right_stick().with_modifiers_each((Negate::x(), AtLeast::default())),
         ));
 
         // --- Global Actions ---
@@ -206,14 +206,21 @@ fn release_cursor(
 }
 
 // Helper
-// InputModifier that sets the value of an input to 0.0 if a threshold is not reached
-// Used to prevent stick drift in (Nintendo) controllers
+/// InputModifier that sets the value of an input to 0.0 if a threshold is not reached used to
+/// prevent stick drift. It differs to DeadZone in that it doesn't remap the input range to [0, 1].
 #[derive(Debug, Clone)]
-struct AtLeast(pub f32);
+struct AtLeast {
+    value: f32,
+    /// If set to true the absolute value of the ActionValue will be used in comparison with value.
+    compare_absolute_value: bool,
+}
 
 impl Default for AtLeast {
     fn default() -> Self {
-        Self(0.2)
+        Self {
+            value: 0.2,
+            compare_absolute_value: true,
+        }
     }
 }
 
@@ -224,30 +231,27 @@ impl InputModifier for AtLeast {
         _: &Time<Virtual>,
         value: ActionValue,
     ) -> ActionValue {
-        // TODO: don't do this
         match value {
-            ActionValue::Bool(bool) => ActionValue::Bool(bool),
-            ActionValue::Axis1D(vec1) => {
-                if vec1 < self.0 {
-                    ActionValue::Axis1D(0.0)
-                } else {
-                    ActionValue::Axis1D(vec1)
+            ActionValue::Bool(bool) => bool.into(),
+            ActionValue::Axis1D(mut vec1) => {
+                let sign = vec1.signum();
+                if self.compare_absolute_value {
+                    vec1 = vec1.abs();
                 }
+                (if vec1 < self.value { 0.0 } else { vec1 * sign }).into()
             }
-            ActionValue::Axis2D(vec2) => {
-                if vec2.length_squared() < self.0.squared() {
-                    ActionValue::Axis2D(Vec2::splat(0.0))
-                } else {
-                    ActionValue::Axis2D(vec2)
-                }
-            }
-            ActionValue::Axis3D(vec3) => {
-                if vec3.length_squared() < self.0.squared() {
-                    ActionValue::Axis3D(Vec3::splat(0.0))
-                } else {
-                    ActionValue::Axis3D(vec3)
-                }
-            }
+            ActionValue::Axis2D(vec2) => (if vec2.length_squared() < self.value.squared() {
+                Vec2::splat(0.0)
+            } else {
+                vec2
+            })
+            .into(),
+            ActionValue::Axis3D(vec3) => (if vec3.length_squared() < self.value.squared() {
+                Vec3::splat(0.0)
+            } else {
+                vec3
+            })
+            .into(),
         }
     }
 }
