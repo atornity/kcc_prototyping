@@ -220,13 +220,8 @@ fn movement(
                 if is_walkable(hit.hit_data.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
                     new_ground = Some(Dir3::new(hit.hit_data.normal1).unwrap());
 
-                    if hit.substep == 0 {
-                        *hit.velocity = project_motion_on_ground(
-                            *hit.velocity,
-                            hit.hit_data.normal1,
-                            character.up,
-                        );
-                    }
+                    *hit.velocity =
+                        project_motion_on_ground(*hit.velocity, hit.hit_data.normal1, character.up);
 
                     return false;
                 }
