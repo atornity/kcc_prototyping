@@ -2,9 +2,9 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 const SIMILARITY_THRESHOLD: f32 = 0.999;
 
+/// Returns the safe hit distance and the hit data from the spatial query.
 #[must_use]
-pub fn character_sweep(
-    spatial_query: &SpatialQuery,
+pub fn sweep_check(
     collider: &Collider,
     origin: Vec3,
     rotation: Quat,
@@ -28,34 +28,60 @@ pub fn character_sweep(
     )?;
 
     // How far is safe to translate by
-    let safe_distance = (hit.distance - epsilon).max(0.0);
+    let safe_distance = hit.distance - epsilon;
 
     Some((safe_distance, hit))
 }
 
-////// EXAMPLE MOVEMENT /////////////
+/// Configuration for the move_and_slide function.
 #[derive(Clone, Copy)]
 pub struct MoveAndSlideConfig {
-    pub max_iterations: usize,
+    pub max_substeps: u8,
     pub epsilon: f32,
 }
 
 impl Default for MoveAndSlideConfig {
     fn default() -> Self {
         Self {
-            max_iterations: 4,
+            max_substeps: 4,
             epsilon: 0.01,
         }
     }
 }
 
+/// Result of the move_and_slide function.
 pub struct MoveAndSlideResult {
     pub new_translation: Vec3,
     pub new_velocity: Vec3,
 }
 
+/// Hit data from the move_and_slide function.
+pub struct MoveAndSlideHit<'a> {
+    /// `move_and_slide` works by substepping. This is the last substep that has occurred, starting from 0.
+    pub substep: u8,
+    /// The hit data from the spatial query.
+    pub hit_data: ShapeHitData,
+    /// You can override the translation from within the `on_hit` callback by setting this value.
+    pub translation: &'a mut Vec3,
+    /// You can override the velocity from within the `on_hit` callback by setting this value.
+    pub velocity: &'a mut Vec3,
+    /// This is the movement direction that occured within the substep before the hit.
+    pub direction: Dir3,
+    /// This is the movement that occured within the substep before the hit.
+    pub motion: f32,
+    /// This is the remaining movement within the substep that would have occurred if we didn't hit anything.
+    pub remaining_motion: f32,
+    /// This is the remaining time of the movement for all substeps. You can override this value to stop the movement early.
+    pub remaining_time: &'a mut f32,
+}
+
+// @todo: lets make this take in a struct instead of a bunch of arguments,
+// that way each can be commented and we can also provide sane defaults, also ordering doesn't matter.
+
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
+///
+/// If `on_hit` returns `false` then the body will not slide during that iteration.
 #[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
     spatial_query: &SpatialQuery,
@@ -66,7 +92,9 @@ pub fn move_and_slide(
     config: MoveAndSlideConfig,
     filter: &SpatialQueryFilter,
     delta_time: f32,
-    mut on_hit: impl FnMut(ShapeHitData),
+    // Callback that is called when a hit occurs.
+    // If `false` is returned then the body will not slide during that iteration.
+    mut on_hit: impl FnMut(&mut MoveAndSlideHit) -> bool,
 ) -> Option<MoveAndSlideResult> {
     let Ok(original_direction) = Dir3::new(velocity) else {
         return None;
@@ -74,15 +102,14 @@ pub fn move_and_slide(
 
     let mut remaining_time = delta_time;
 
-    let mut hits = Vec::with_capacity(config.max_iterations);
+    let mut hits = Vec::with_capacity(config.max_substeps as usize);
 
-    for _ in 0..config.max_iterations {
+    for substep in 0..config.max_substeps {
         let Ok((direction, max_distance)) = Dir3::new_and_length(velocity * remaining_time) else {
             break;
         };
 
-        let Some((safe_movement, hit)) = character_sweep(
-            spatial_query,
+        let Some((safe_movement, hit)) = sweep_check(
             collider,
             translation,
             rotation,
@@ -96,18 +123,29 @@ pub fn move_and_slide(
             break;
         };
 
-        // Trigger callbacks
-        on_hit(hit);
-
-        hits.push(hit.normal1);
-
         // Progress time by the movement amount
         remaining_time *= 1.0 - safe_movement / max_distance;
 
         // Move the transform to just before the point of collision
         translation += direction * safe_movement;
 
-        // Project velocity and remaining motion onto the surface plane
+        // Trigger callbacks
+        if !on_hit(&mut MoveAndSlideHit {
+            substep,
+            hit_data: hit,
+            translation: &mut translation,
+            velocity: &mut velocity,
+            direction,
+            motion: safe_movement,
+            remaining_motion: max_distance - safe_movement,
+            remaining_time: &mut remaining_time,
+        }) {
+            // User decided to not slide, continue to next substep
+            continue;
+        }
+
+        hits.push(hit.normal1);
+
         velocity = solve_collision_planes(velocity, &hits, *original_direction);
 
         // Quake2: "If velocity is against original velocity, stop early to avoid tiny oscilations in sloping corners."
