@@ -218,8 +218,8 @@ fn movement(
                     return true;
                 }
 
-                // Make sure velocity is not upwards after stepping. This is because if 
-                // we're a capsule, the roundness of it will cause an upward velocity, 
+                // Make sure velocity is not upwards after stepping. This is because if
+                // we're a capsule, the roundness of it will cause an upward velocity,
                 // giving us a launching up effect that we don't want.
                 let up_vel = movement.translation.dot(*character.up).max(0.0);
                 *movement.velocity -= character.up * up_vel;
