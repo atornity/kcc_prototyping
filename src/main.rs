@@ -9,10 +9,14 @@ use bevy::{
 };
 use bevy_enhanced_input::prelude::Actions;
 use kcc_prototype::{
-    camera::{CameraPlugin, MainCamera}, character::*, input::{DefaultContext, InputPlugin}, level::LevelGeneratorPlugin, movement::{Character, KCCPlugin},
     Attachments,
     camera::FollowOffset,
+    camera::{CameraPlugin, MainCamera},
+    character::*,
+    input::{DefaultContext, InputPlugin},
     input::{FlyCameraContext, OrbitCameraContext},
+    level::LevelGeneratorPlugin,
+    movement::{Character, KCCPlugin},
 };
 
 fn main() -> AppExit {
@@ -43,7 +47,10 @@ fn setup(
         Actions::<FlyCameraContext>::default(),
         Actions::<OrbitCameraContext>::default(),
         Character::default(),
-        Mesh3d(meshes.add(Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH))),
+        Mesh3d(meshes.add(Capsule3d::new(
+            EXAMPLE_CHARACTER_RADIUS,
+            EXAMPLE_CHARACTER_CAPSULE_LENGTH,
+        ))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::WHITE.with_alpha(0.25),
             alpha_mode: AlphaMode::Blend,
