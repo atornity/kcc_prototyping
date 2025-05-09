@@ -34,6 +34,32 @@ pub struct Character {
     up: Dir3,
 }
 
+impl Character {
+    /// Launch the character, clearing the grounded state if launched away from the `floor` normal.
+    pub fn launch(&mut self, impulse: Vec3) {
+        if let Some(floor) = self.floor {
+            // Clear grounded if launched away from the floor
+            if floor.dot(impulse) > 0.0 {
+                self.floor = None;
+            }
+        }
+
+        self.velocity += impulse
+    }
+
+    /// Launch the character on the `up` axis, overriding the downward velocity.
+    pub fn jump(&mut self, impulse: f32) {
+        // Override downward velocity
+        let down = self.velocity.dot(*self.up).min(0.0);
+        self.launch(self.up * impulse + self.up * -down);
+    }
+
+    /// Returns `true` if the character is standing on the floor.
+    pub fn grounded(&self) -> bool {
+        self.floor.is_some()
+    }
+}
+
 impl Default for Character {
     fn default() -> Self {
         Self {
@@ -69,11 +95,8 @@ fn movement(
     let main_camera_transform = main_camera.into_inner();
     for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
         if actions.action::<Jump>().state() == ActionState::Fired {
-            if character.floor.take().is_some() {
-                // Override downard velocity
-                let down_vel = character.velocity.dot(*character.up).min(0.0);
-                let jump_impulse = character.up * (EXAMPLE_JUMP_IMPULSE - down_vel);
-                character.velocity += jump_impulse;
+            if character.grounded() {
+                character.jump(EXAMPLE_JUMP_IMPULSE);
             }
         }
 
