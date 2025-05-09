@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, fmt::Debug};
+use std::f32::consts::PI;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -30,15 +30,6 @@ pub struct Ground {
 }
 
 impl Ground {
-    /// If the `normal` can not be normalized, the resulting [`Ground`] will have a `normal` of `Dir3::Y`.
-    pub fn new(entity: Entity, normal: impl TryInto<Dir3>, distance: f32) -> Self {
-        Self {
-            entity,
-            normal: normal.try_into().unwrap_or(Dir3::Y),
-            distance,
-        }
-    }
-
     /// Construct a new [`Ground`] if the `normal` is walkable with the given `walkable_angle` and `up` direction.
     ///
     /// Returns `None` if the [`Ground`] isn't walkable or if the provided `normal` can't be normalized.

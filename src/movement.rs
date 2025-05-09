@@ -10,7 +10,7 @@ use crate::{
     camera::MainCamera,
     character::*,
     input::{self, DefaultContext, Jump},
-    move_and_slide::{MoveAndSlideConfig, move_and_slide},
+    move_and_slide::*,
 };
 
 // @todo: we should probably move all of this into an example file, then make the project a lib instead of a bin.
