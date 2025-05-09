@@ -92,7 +92,7 @@ fn movement(
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
-                EXAMPLE_GROUND_ACCELERATION
+                EXAMPLE_FLOOR_ACCELERATION
             }
             None => {
                 // Apply gravity when not grounded
