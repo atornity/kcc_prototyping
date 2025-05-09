@@ -7,8 +7,6 @@ pub mod level;
 pub mod move_and_slide;
 pub mod movement;
 
-pub(crate) mod floor;
-
 #[derive(Component)]
 #[relationship(relationship_target = Attachments)]
 pub struct AttachedTo(pub Entity);

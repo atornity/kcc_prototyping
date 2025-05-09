@@ -10,7 +10,7 @@ use crate::{
     camera::MainCamera,
     character::*,
     input::{self, DefaultContext, Jump},
-    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
+    move_and_slide::{MoveAndSlideConfig, move_and_slide},
 };
 
 // @todo: we should probably move all of this into an example file, then make the project a lib instead of a bin.
@@ -30,16 +30,16 @@ impl Plugin for KCCPlugin {
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Floor>,
+    ground: Option<Ground>,
     up: Dir3,
 }
 
 impl Character {
-    /// Launch the character, clearing the grounded state if launched away from the `ground` normal.
+    /// Launch the character, clearing the `ground` if launched away from it's normal.
     pub fn launch(&mut self, impulse: Vec3) {
         if let Some(ground) = self.ground {
-            // Clear grounded if launched away from the ground
-            if ground.dot(impulse) > 0.0 {
+            // Clear ground if launched away from the ground
+            if ground.normal.dot(impulse) > 0.0 {
                 self.ground = None;
             }
         }
@@ -51,7 +51,7 @@ impl Character {
     pub fn jump(&mut self, impulse: f32) {
         // Override downward velocity
         let down = self.velocity.dot(*self.up).min(0.0);
-        self.launch(self.up * impulse + self.up * -down);
+        self.launch((impulse - down) * self.up);
     }
 
     /// Returns `true` if the character is standing on the ground.
@@ -152,30 +152,28 @@ fn movement(
         let mut new_ground = None;
 
         if let Some(move_and_slide_result) = move_and_slide(
-            &spatial_query,
             &collider,
             transform.translation,
             character.velocity,
             rotation,
             config,
+            &spatial_query,
             &filter,
             time.delta_secs(),
             |movement| {
-                let walkable = is_walkable(
+                if let Some(ground) = Ground::new_if_walkable(
+                    movement.hit_data.entity,
                     movement.hit_data.normal1,
+                    movement.motion,
                     character.up,
                     EXAMPLE_WALKABLE_ANGLE,
-                );
-
-                if walkable {
-                    // Dir3::new won't be Err since we have already checked if it's walkable
-                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
+                ) {
+                    new_ground = Some(ground);
+                    return true;
                 }
 
-                let grounded = character.ground.is_some() || new_ground.is_some();
-
                 // In order to try step up we need to be grounded and hitting a "wall".
-                if walkable || !grounded {
+                if character.ground.is_none() && new_ground.is_none() {
                     return true;
                 }
 
@@ -200,7 +198,6 @@ fn movement(
                 let step_motion = movement.direction * forward - horizontal_normal * inward;
 
                 let Some((step_offset, step_hit)) = try_climb_step(
-                    &spatial_query,
                     &collider,
                     *movement.translation,
                     step_motion,
@@ -208,15 +205,24 @@ fn movement(
                     character.up,
                     EXAMPLE_STEP_HEIGHT + EXAMPLE_GROUND_CHECK_DISTANCE,
                     config.epsilon,
+                    &spatial_query,
                     &filter,
                 ) else {
                     // Can't stand here, slide instead
                     return true;
                 };
 
-                if !is_walkable(step_hit.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
+                let Some(ground) = Ground::new_if_walkable(
+                    step_hit.entity,
+                    step_hit.normal1,
+                    step_hit.distance,
+                    character.up,
+                    EXAMPLE_WALKABLE_ANGLE,
+                ) else {
                     return true;
-                }
+                };
+
+                new_ground = Some(ground);
 
                 // Make sure velocity is not upwards after stepping. This is because if
                 // we're a capsule, the roundness of it will cause an upward velocity,
@@ -226,8 +232,6 @@ fn movement(
 
                 // We need to override the translation here because the we stepped up
                 *movement.translation = step_offset;
-
-                new_ground = Some(Dir3::new(step_hit.normal1).unwrap());
 
                 // Subtract the stepped distance from remaining time to avoid moving further
                 let move_time = (forward + inward) * time.delta_secs();
@@ -242,20 +246,19 @@ fn movement(
         }
 
         if character.ground.is_some() && new_ground.is_none() {
-            if let Some((movement, hit)) = ground_check(
+            if let Some(ground) = ground_check(
                 &collider,
-                &config,
                 transform.translation,
-                -character.up,
-                10.0, // arbitrary trace distance
                 rotation,
+                character.up,
+                EXAMPLE_GROUND_CHECK_DISTANCE,
+                config.epsilon,
+                EXAMPLE_WALKABLE_ANGLE,
                 &spatial_query,
                 &filter,
-                EXAMPLE_GROUND_CHECK_DISTANCE,
-                EXAMPLE_WALKABLE_ANGLE,
             ) {
-                transform.translation -= movement * character.up;
-                new_ground = Some(Dir3::new(hit.normal1).unwrap());
+                transform.translation -= character.up * ground.distance;
+                new_ground = Some(ground);
             }
         }
 

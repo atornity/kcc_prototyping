@@ -11,6 +11,7 @@ pub fn sweep_check(
     direction: Dir3,
     max_distance: f32,
     epsilon: f32,
+    spatial_query: &SpatialQuery,
     filter: &SpatialQueryFilter,
 ) -> Option<(f32, ShapeHitData)> {
     let hit = spatial_query.cast_shape(
@@ -84,12 +85,12 @@ pub struct MoveAndSlideHit<'a> {
 /// If `on_hit` returns `false` then the body will not slide during that iteration.
 #[allow(clippy::too_many_arguments)]
 pub fn move_and_slide(
-    spatial_query: &SpatialQuery,
     collider: &Collider,
     mut translation: Vec3,
     mut velocity: Vec3,
     rotation: Quat,
     config: MoveAndSlideConfig,
+    spatial_query: &SpatialQuery,
     filter: &SpatialQueryFilter,
     delta_time: f32,
     // Callback that is called when a hit occurs.
@@ -116,6 +117,7 @@ pub fn move_and_slide(
             direction,
             max_distance,
             config.epsilon,
+            spatial_query,
             filter,
         ) else {
             // No collision, move the full remaining distance
