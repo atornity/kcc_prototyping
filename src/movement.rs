@@ -1,16 +1,19 @@
 use std::f32::consts::PI;
 
 use avian3d::prelude::{
-    Collider, CollisionLayers, RigidBody, Sensor, ShapeHitData, SpatialQuery, SpatialQueryFilter,
+    Collider, CollisionLayers, RigidBody, Sensor, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
 use crate::{
     camera::MainCamera,
+    character::*,
     input::{self, DefaultContext, Jump},
-    move_and_slide::{MoveAndSlideConfig, character_sweep, move_and_slide},
+    move_and_slide::*,
 };
+
+// @todo: we should probably move all of this into an example file, then make the project a lib instead of a bin.
 
 pub struct KCCPlugin;
 
@@ -23,21 +26,21 @@ impl Plugin for KCCPlugin {
 #[derive(Component)]
 #[require(
     RigidBody = RigidBody::Kinematic,
-    Collider = Capsule3d::new(0.35, 1.0),
+    Collider = Capsule3d::new(EXAMPLE_CHARACTER_RADIUS, EXAMPLE_CHARACTER_CAPSULE_LENGTH),
 )]
 pub struct Character {
     velocity: Vec3,
-    floor: Option<Dir3>,
+    ground: Option<Dir3>,
     up: Dir3,
 }
 
 impl Character {
-    /// Launch the character, clearing the grounded state if launched away from the `floor` normal.
+    /// Launch the character, clearing the grounded state if launched away from the `ground` normal.
     pub fn launch(&mut self, impulse: Vec3) {
-        if let Some(floor) = self.floor {
-            // Clear grounded if launched away from the floor
-            if floor.dot(impulse) > 0.0 {
-                self.floor = None;
+        if let Some(ground) = self.ground {
+            // Clear grounded if launched away from the ground
+            if ground.dot(impulse) > 0.0 {
+                self.ground = None;
             }
         }
 
@@ -51,9 +54,9 @@ impl Character {
         self.launch(self.up * impulse + self.up * -down);
     }
 
-    /// Returns `true` if the character is standing on the floor.
+    /// Returns `true` if the character is standing on the ground.
     pub fn grounded(&self) -> bool {
-        self.floor.is_some()
+        self.ground.is_some()
     }
 }
 
@@ -61,7 +64,7 @@ impl Default for Character {
     fn default() -> Self {
         Self {
             velocity: Vec3::ZERO,
-            floor: None,
+            ground: None,
             up: Dir3::Y,
         }
     }
@@ -71,14 +74,6 @@ impl Default for Character {
 // This shouldn't be strictly necessary if we figure out how to properly layer InputContexts.
 #[derive(Component)]
 pub struct Frozen;
-
-const EXAMPLE_MOVEMENT_SPEED: f32 = 8.0;
-const EXAMPLE_FLOOR_ACCELERATION: f32 = 100.0;
-const EXAMPLE_AIR_ACCELERATION: f32 = 40.0;
-const EXAMPLE_FRICTION: f32 = 60.0;
-const EXAMPLE_WALKABLE_ANGLE: f32 = PI / 4.0;
-const EXAMPLE_JUMP_IMPULSE: f32 = 6.0;
-const EXAMPLE_GRAVITY: f32 = 20.0; // realistic earth gravity tend to feel wrong for games
 
 fn movement(
     mut q_kcc: Query<
@@ -108,15 +103,19 @@ fn movement(
         // Get the raw 2D input vector
         let input_vec = actions.action::<input::Move>().value().as_axis2d();
 
-        // Rotate the movement direction vector by the camera's yaw
-        let direction = main_camera_transform.rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
+        // Extract just the yaw from the camera rotation
+        let camera_yaw = main_camera_transform.rotation.to_euler(EulerRot::YXZ).0;
+        let yaw_rotation = Quat::from_rotation_y(camera_yaw);
 
-        let max_acceleration = match character.floor {
+        // Rotate the movement direction vector by only the camera's yaw
+        let direction = yaw_rotation * Vec3::new(input_vec.x, 0.0, -input_vec.y);
+
+        let max_acceleration = match character.ground {
             Some(_) => {
                 let friction = friction(character.velocity, EXAMPLE_FRICTION, time.delta_secs());
                 character.velocity += friction;
 
-                EXAMPLE_FLOOR_ACCELERATION
+                EXAMPLE_GROUND_ACCELERATION
             }
             None => {
                 // Apply gravity when not grounded
@@ -149,56 +148,117 @@ fn movement(
 
         let config = MoveAndSlideConfig::default();
 
-        let up = character.up;
-
-        // Check if the floor is walkable
-        let is_walkable = |hit: ShapeHitData| {
-            let slope_angle = up.angle_between(hit.normal1);
-            slope_angle < EXAMPLE_WALKABLE_ANGLE
-        };
-
-        let mut floor = None;
+        // We need to store the new ground for the ground check to work properly
+        let mut new_ground = None;
 
         if let Some(move_and_slide_result) = move_and_slide(
             &spatial_query,
-            collider,
+            &collider,
             transform.translation,
             character.velocity,
             rotation,
             config,
             &filter,
             time.delta_secs(),
-            |hit| {
-                if is_walkable(hit) {
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
+            |movement| {
+                let walkable = is_walkable(
+                    movement.hit_data.normal1,
+                    character.up,
+                    EXAMPLE_WALKABLE_ANGLE,
+                );
+
+                if walkable {
+                    // Dir3::new won't be Err since we have already checked if it's walkable
+                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
                 }
+
+                let grounded = character.ground.is_some() || new_ground.is_some();
+
+                // In order to try step up we need to be grounded and hitting a "wall".
+                if walkable || !grounded {
+                    return true;
+                }
+
+                let horizontal_normal = movement
+                    .hit_data
+                    .normal1
+                    .reject_from_normalized(*character.up)
+                    .normalize_or_zero();
+
+                // This is necessary for capsule colliders since the normal angle changes depending on
+                // how far out on a ledge the character is standing
+                let a = 1.0 - EXAMPLE_WALKABLE_ANGLE.cos();
+                let min_inward_distance = EXAMPLE_CHARACTER_RADIUS * a;
+
+                // Step into the hit normal alil bit, this helps with the capsule collider.
+                // Cylinders don't need this since they have a flat bottom.
+                let inward = min_inward_distance + config.epsilon * PI;
+
+                // Step a lil bit less forward to account for stepping into the hit normal
+                let forward = (movement.remaining_motion - inward).max(0.0);
+
+                let step_motion = movement.direction * forward - horizontal_normal * inward;
+
+                let Some((step_offset, step_hit)) = try_climb_step(
+                    &spatial_query,
+                    &collider,
+                    *movement.translation,
+                    step_motion,
+                    rotation,
+                    character.up,
+                    EXAMPLE_STEP_HEIGHT + EXAMPLE_GROUND_CHECK_DISTANCE,
+                    config.epsilon,
+                    &filter,
+                ) else {
+                    // Can't stand here, slide instead
+                    return true;
+                };
+
+                if !is_walkable(step_hit.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
+                    return true;
+                }
+
+                // Make sure velocity is not upwards after stepping. This is because if 
+                // we're a capsule, the roundness of it will cause an upward velocity, 
+                // giving us a launching up effect that we don't want.
+                let up_vel = movement.translation.dot(*character.up).max(0.0);
+                *movement.velocity -= character.up * up_vel;
+
+                // We need to override the translation here because the we stepped up
+                *movement.translation = step_offset;
+
+                new_ground = Some(Dir3::new(step_hit.normal1).unwrap());
+
+                // Subtract the stepped distance from remaining time to avoid moving further
+                let move_time = (forward + inward) * time.delta_secs();
+                *movement.remaining_time = (*movement.remaining_time - move_time).max(0.0);
+
+                // Successfully stepped, don't slide this iteration
+                false
             },
         ) {
             transform.translation = move_and_slide_result.new_translation;
             character.velocity = move_and_slide_result.new_velocity;
         }
 
-        // Check for floor when previously on the floor and no floor was found during move and slide
-        // to avoid rapid changes to the grounded state
-        if character.floor.is_some() && floor.is_none() {
-            if let Some((movement, hit)) = character_sweep(
-                collider,
-                config.epsilon,
+        if character.ground.is_some() && new_ground.is_none() {
+            if let Some((movement, hit)) = ground_check(
+                &collider,
+                &config,
                 transform.translation,
-                -character.up,
-                10.0, // arbitrary trace distance
+                character.up,
                 rotation,
                 &spatial_query,
                 &filter,
+                EXAMPLE_GROUND_CHECK_DISTANCE,
+                EXAMPLE_WALKABLE_ANGLE,
             ) {
-                if is_walkable(hit) {
-                    transform.translation -= character.up * movement; // also snap to the floor
-                    floor = Some(Dir3::new(hit.normal1).unwrap());
-                }
+                transform.translation -= movement * character.up;
+                new_ground = Some(Dir3::new(hit.normal1).unwrap());
             }
         }
 
-        character.floor = floor;
+        character.ground = new_ground;
     }
 }
 
