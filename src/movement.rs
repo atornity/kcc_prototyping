@@ -20,6 +20,7 @@ pub struct KCCPlugin;
 impl Plugin for KCCPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, movement);
+        app.add_systems(Update, jump_input);
     }
 }
 
@@ -74,6 +75,14 @@ impl Default for Character {
 // This shouldn't be strictly necessary if we figure out how to properly layer InputContexts.
 #[derive(Component)]
 pub struct Frozen;
+
+fn jump_input(mut query: Query<(&mut Character, &Actions<DefaultContext>)>) {
+    for (mut character, actions) in &mut query {
+        if character.grounded() && actions.action::<Jump>().state() == ActionState::Fired {
+            character.jump(EXAMPLE_JUMP_IMPULSE);
+        }
+    }
+}
 
 fn movement(
     mut q_kcc: Query<
@@ -218,8 +227,8 @@ fn movement(
                     return true;
                 }
 
-                // Make sure velocity is not upwards after stepping. This is because if 
-                // we're a capsule, the roundness of it will cause an upward velocity, 
+                // Make sure velocity is not upwards after stepping. This is because if
+                // we're a capsule, the roundness of it will cause an upward velocity,
                 // giving us a launching up effect that we don't want.
                 let up_vel = movement.translation.dot(*character.up).max(0.0);
                 *movement.velocity -= character.up * up_vel;
