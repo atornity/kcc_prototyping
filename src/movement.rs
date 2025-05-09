@@ -182,6 +182,7 @@ fn movement(
                 if is_walkable(hit.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
                     new_ground = Some(Dir3::new(hit.normal1).unwrap());
 
+                    // If the ground is walkable, project motion on ground plane
                     move_accel = project_motion_on_ground(move_accel, hit.normal1, character.up);
                 } else if let Some(step_result) = try_step_up_on_hit(
                     collider,
@@ -200,6 +201,7 @@ fn movement(
 
                     transform.translation = step_result.translation;
                 } else {
+                    // If the ground is not walkable, project motion on wall plane
                     move_accel = project_motion_on_wall(move_accel, hit.normal1, character.up);
                 }
             }
@@ -220,10 +222,22 @@ fn movement(
                 if is_walkable(hit.hit_data.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
                     new_ground = Some(Dir3::new(hit.hit_data.normal1).unwrap());
 
-                    *hit.velocity =
-                        project_motion_on_ground(*hit.velocity, hit.hit_data.normal1, character.up);
+                    // Avoid sliding down slopes when just landing
+                    if !character.grounded() {
+                        *hit.velocity = project_motion_on_ground(
+                            *hit.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
 
-                    return false;
+                        character.velocity = project_motion_on_ground(
+                            character.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
+                    }
+
+                    return true;
                 }
 
                 let grounded = character.grounded() || new_ground.is_some();
@@ -258,7 +272,25 @@ fn movement(
                 }
 
                 // Slide vleocity along walls
-                character.velocity = character.velocity.reject_from(hit.hit_data.normal1);
+                match grounded {
+                    // Avoid sliding up walls when grounded
+                    true => {
+                        character.velocity = project_motion_on_wall(
+                            character.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
+
+                        *hit.velocity = project_motion_on_wall(
+                            *hit.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        )
+                    }
+                    false => {
+                        character.velocity = character.velocity.reject_from(hit.hit_data.normal1)
+                    }
+                };
 
                 true
             },
@@ -266,32 +298,21 @@ fn movement(
 
         transform.translation = move_result.new_translation;
 
-        match (character.ground, new_ground) {
-            // Lost ground connection
-            (Some(_), None) => {
-                // Check if the ground is still there
-                if let Some((safe_distance, hit)) = ground_check(
-                    &collider,
-                    &config,
-                    transform.translation,
-                    character.up,
-                    transform.rotation,
-                    &spatial_query,
-                    &filter,
-                    EXAMPLE_GROUND_CHECK_DISTANCE,
-                    EXAMPLE_WALKABLE_ANGLE,
-                ) {
-                    transform.translation -= safe_distance * character.up;
-                    new_ground = Some(Dir3::new(hit.normal1).unwrap());
-                }
+        if character.grounded() && new_ground.is_none() {
+            if let Some((safe_distance, hit)) = ground_check(
+                &collider,
+                &config,
+                transform.translation,
+                character.up,
+                transform.rotation,
+                &spatial_query,
+                &filter,
+                EXAMPLE_GROUND_CHECK_DISTANCE,
+                EXAMPLE_WALKABLE_ANGLE,
+            ) {
+                transform.translation -= safe_distance * character.up;
+                new_ground = Some(Dir3::new(hit.normal1).unwrap());
             }
-            // Just landed
-            (None, Some(new_ground)) => {
-                // Project velocity on the ground plane
-                character.velocity =
-                    project_motion_on_ground(character.velocity, new_ground, character.up);
-            }
-            _ => {}
         }
 
         let h = character
