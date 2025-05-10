@@ -86,7 +86,6 @@ pub(crate) struct SlideResult {
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
 ///
-#[allow(clippy::too_many_arguments)]
 /// If `on_hit` returns with `SlideOutput::skip_slide` set to true then the `collider` will not slide during that iteration.
 ///
 /// Keeping this as `pub(crate)` for now so I can keep `Slide` and `SlideOutput` as `pub(crate)`.
