@@ -1,7 +1,4 @@
-use avian3d::{
-    PhysicsPlugins,
-    prelude::{PhysicsDebugPlugin, PhysicsDiagnosticsPlugin, PhysicsDiagnosticsUiPlugin},
-};
+use avian3d::{PhysicsPlugins, prelude::*};
 use bevy::{
     pbr::{Atmosphere, light_consts::lux},
     prelude::*,
@@ -59,7 +56,7 @@ fn setup(
         Attachments::spawn_one((
             MainCamera,
             FollowOffset {
-                absolute: Vec3::Y * 0.75,
+                absolute: Vec3::Y * EXAMPLE_CHARACTER_CAPSULE_LENGTH / 2.0,
                 ..Default::default()
             },
             Camera {

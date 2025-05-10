@@ -93,6 +93,7 @@ fn movement(
             &mut Character,
             &Collider,
             &CollisionLayers,
+            Has<Sensor>,
         ),
         Without<Frozen>,
     >,
@@ -102,7 +103,8 @@ fn movement(
     spatial_query: SpatialQuery,
 ) {
     let main_camera_transform = main_camera.into_inner();
-    for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
+    for (entity, actions, mut transform, mut character, collider, layers, has_sensor) in &mut q_kcc
+    {
         if actions.action::<Jump>().state() == ActionState::Fired {
             if character.grounded() {
                 character.jump(EXAMPLE_JUMP_IMPULSE);
@@ -136,16 +138,21 @@ fn movement(
         };
 
         // accelerate in the movement direction
-        let acceleration = acceleration(
+        let mut move_accel = acceleration(
             character.velocity,
             direction,
             max_acceleration,
             EXAMPLE_MOVEMENT_SPEED,
             time.delta_secs(),
         );
-        character.velocity += acceleration;
 
-        let rotation = transform.rotation;
+        // We can skip everything if the character has a sensor component
+        if has_sensor {
+            character.velocity += move_accel;
+            transform.translation += character.velocity * time.delta_secs();
+
+            continue;
+        }
 
         // Filter out the character entity as well as any entities not in the character's collision filter
         let mut filter = SpatialQueryFilter::default()
@@ -160,121 +167,249 @@ fn movement(
         // We need to store the new ground for the ground check to work properly
         let mut new_ground = None;
 
-        if let Some(move_and_slide_result) = move_and_slide(
+        if let Some(ground) = character.ground {
+            // Project acceleration on the ground plane
+            move_accel = project_motion_on_ground(move_accel, *ground, character.up);
+        }
+
+        // Sweep in the movement direction to find a plane to project acceleration on
+        // This is a seperate step because trying to do this in the `move_and_slide` callback
+        // results in "sticking" to the wall rather than sliding down at the expected rate
+        if let Ok((direction, max_distance)) = Dir3::new_and_length(move_accel * time.delta_secs())
+        {
+            if let Some((safe_distance, hit)) = sweep_check(
+                collider,
+                config.epsilon,
+                transform.translation,
+                direction,
+                max_distance,
+                transform.rotation,
+                &spatial_query,
+                &filter,
+            ) {
+                // Move to the hit point
+                transform.translation += direction * safe_distance;
+
+                if is_walkable(hit.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
+                    new_ground = Some(Dir3::new(hit.normal1).unwrap());
+
+                    // If the ground is walkable, project motion on ground plane
+                    move_accel = project_motion_on_ground(move_accel, hit.normal1, character.up);
+                } else if let Some(step_result) = try_step_up_on_hit(
+                    collider,
+                    transform.translation,
+                    transform.rotation,
+                    character.up,
+                    hit.normal1,
+                    direction,
+                    max_distance - safe_distance,
+                    config.epsilon,
+                    &spatial_query,
+                    &filter,
+                    time.delta_secs(),
+                ) {
+                    new_ground = Some(Dir3::new(step_result.normal).unwrap());
+
+                    transform.translation = step_result.translation;
+                } else {
+                    // If the ground is not walkable, project motion on wall plane
+                    move_accel = project_motion_on_wall(move_accel, hit.normal1, character.up);
+                }
+            }
+        }
+
+        character.velocity += move_accel;
+
+        let move_result = move_and_slide(
             &spatial_query,
             &collider,
             transform.translation,
             character.velocity,
-            rotation,
+            transform.rotation,
             config,
             &filter,
             time.delta_secs(),
-            |movement| {
-                let walkable = is_walkable(
-                    movement.hit_data.normal1,
-                    character.up,
-                    EXAMPLE_WALKABLE_ANGLE,
-                );
+            |hit| {
+                if is_walkable(hit.hit_data.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
+                    new_ground = Some(Dir3::new(hit.hit_data.normal1).unwrap());
 
-                if walkable {
-                    // Dir3::new won't be Err since we have already checked if it's walkable
-                    new_ground = Some(Dir3::new(movement.hit_data.normal1).unwrap());
+                    // Avoid sliding down slopes when just landing
+                    if !character.grounded() {
+                        *hit.velocity = project_motion_on_ground(
+                            *hit.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
+
+                        character.velocity = project_motion_on_ground(
+                            character.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
+                    }
+
+                    return true;
                 }
 
-                let grounded = character.ground.is_some() || new_ground.is_some();
+                let grounded = character.grounded() || new_ground.is_some();
 
                 // In order to try step up we need to be grounded and hitting a "wall".
-                if walkable || !grounded {
-                    return true;
+                if grounded {
+                    if let Some(step_result) = try_step_up_on_hit(
+                        collider,
+                        *hit.translation,
+                        transform.rotation,
+                        character.up,
+                        hit.hit_data.normal1,
+                        hit.direction,
+                        hit.remaining_motion,
+                        config.epsilon,
+                        &spatial_query,
+                        &filter,
+                        time.delta_secs(),
+                    ) {
+                        new_ground = Some(Dir3::new(step_result.normal).unwrap());
+
+                        // Subtract the stepped distance from remaining time to avoid moving further
+                        *hit.remaining_time =
+                            (*hit.remaining_time - step_result.move_time).max(0.0);
+
+                        // We need to override the translation here because the we stepped up
+                        *hit.translation = step_result.translation;
+
+                        // Successfully stepped, don't slide this iteration
+                        return false;
+                    }
                 }
 
-                let horizontal_normal = movement
-                    .hit_data
-                    .normal1
-                    .reject_from_normalized(*character.up)
-                    .normalize_or_zero();
+                // Slide vleocity along walls
+                match grounded {
+                    // Avoid sliding up walls when grounded
+                    true => {
+                        character.velocity = project_motion_on_wall(
+                            character.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        );
 
-                // This is necessary for capsule colliders since the normal angle changes depending on
-                // how far out on a ledge the character is standing
-                let a = 1.0 - EXAMPLE_WALKABLE_ANGLE.cos();
-                let min_inward_distance = EXAMPLE_CHARACTER_RADIUS * a;
-
-                // Step into the hit normal alil bit, this helps with the capsule collider.
-                // Cylinders don't need this since they have a flat bottom.
-                let inward = min_inward_distance + config.epsilon * PI;
-
-                // Step a lil bit less forward to account for stepping into the hit normal
-                let forward = (movement.remaining_motion - inward).max(0.0);
-
-                let step_motion = movement.direction * forward - horizontal_normal * inward;
-
-                let Some((step_offset, step_hit)) = try_climb_step(
-                    &spatial_query,
-                    &collider,
-                    *movement.translation,
-                    step_motion,
-                    rotation,
-                    character.up,
-                    EXAMPLE_STEP_HEIGHT + EXAMPLE_GROUND_CHECK_DISTANCE,
-                    config.epsilon,
-                    &filter,
-                ) else {
-                    // Can't stand here, slide instead
-                    return true;
+                        *hit.velocity = project_motion_on_wall(
+                            *hit.velocity,
+                            hit.hit_data.normal1,
+                            character.up,
+                        )
+                    }
+                    false => {
+                        character.velocity = character.velocity.reject_from(hit.hit_data.normal1)
+                    }
                 };
 
-                if !is_walkable(
-                    step_hit.normal1,
-                    character.up,
-                    // Subtract a small amount from walkable angle to make sure we can't step
-                    // on surfaces that are nearly excactly the walkable angle of the character
-                    EXAMPLE_WALKABLE_ANGLE - 1e-4,
-                ) {
-                    return true;
-                }
-
-                // Make sure velocity is not upwards after stepping. This is because if
-                // we're a capsule, the roundness of it will cause an upward velocity,
-                // giving us a launching up effect that we don't want.
-                let up_vel = movement.translation.dot(*character.up).max(0.0);
-                *movement.velocity -= character.up * up_vel;
-
-                // We need to override the translation here because the we stepped up
-                *movement.translation = step_offset;
-
-                new_ground = Some(Dir3::new(step_hit.normal1).unwrap());
-
-                // Subtract the stepped distance from remaining time to avoid moving further
-                let move_time = (forward + inward) * time.delta_secs();
-                *movement.remaining_time = (*movement.remaining_time - move_time).max(0.0);
-
-                // Successfully stepped, don't slide this iteration
-                false
+                true
             },
-        ) {
-            transform.translation = move_and_slide_result.new_translation;
-            character.velocity = move_and_slide_result.new_velocity;
-        }
+        );
 
-        if character.ground.is_some() && new_ground.is_none() {
-            if let Some((movement, hit)) = ground_check(
+        transform.translation = move_result.new_translation;
+
+        if character.grounded() && new_ground.is_none() {
+            if let Some((safe_distance, hit)) = ground_check(
                 &collider,
                 &config,
                 transform.translation,
                 character.up,
-                rotation,
+                transform.rotation,
                 &spatial_query,
                 &filter,
                 EXAMPLE_GROUND_CHECK_DISTANCE,
                 EXAMPLE_WALKABLE_ANGLE,
             ) {
-                transform.translation -= movement * character.up;
+                transform.translation -= safe_distance * character.up;
                 new_ground = Some(Dir3::new(hit.normal1).unwrap());
             }
         }
 
+        let h = character
+            .velocity
+            .reject_from_normalized(*character.up)
+            .length();
+        let v = character
+            .velocity
+            .project_onto_normalized(*character.up)
+            .length();
+        let all = character.velocity.length();
+        dbg!([h, v, all]);
+
+        // Update the ground
         character.ground = new_ground;
     }
+}
+
+struct StepUpResult {
+    translation: Vec3,
+    move_time: f32,
+    normal: Vec3,
+}
+
+fn try_step_up_on_hit(
+    collider: &Collider,
+    translation: Vec3,
+    rotation: Quat,
+    up: Dir3,
+    hit_normal: Vec3,
+    direction: Dir3,
+    mut step_forward: f32,
+    epsilon: f32,
+    spatial_query: &SpatialQuery,
+    filter: &SpatialQueryFilter,
+    delta_time: f32,
+) -> Option<StepUpResult> {
+    let horizontal_normal = hit_normal.reject_from_normalized(*up).normalize_or_zero();
+
+    // This is necessary for capsule colliders since the normal angle changes depending on
+    // how far out on a ledge the character is standing
+    let a = 1.0 - EXAMPLE_WALKABLE_ANGLE.cos();
+    let min_inward_distance = EXAMPLE_CHARACTER_RADIUS * a;
+
+    // Step into the hit normal alil bit, this helps with the capsule collider.
+    // Cylinders don't need this since they have a flat bottom.
+    let inward = min_inward_distance + epsilon * PI;
+
+    // Step a lil bit less forward to account for stepping into the hit normal
+    step_forward = (step_forward - inward).max(0.0);
+
+    let step_motion = direction * step_forward - horizontal_normal * inward;
+
+    let Some((step_translation, hit)) = try_climb_step(
+        spatial_query,
+        &collider,
+        translation,
+        step_motion,
+        rotation,
+        up,
+        EXAMPLE_STEP_HEIGHT + EXAMPLE_GROUND_CHECK_DISTANCE,
+        epsilon,
+        &filter,
+    ) else {
+        // Can't stand here, slide instead
+        return None;
+    };
+
+    if !is_walkable(
+        hit.normal1,
+        up,
+        // Subtract a small amount from walkable angle to make sure we can't step
+        // on surfaces that are nearly excactly the walkable angle of the character
+        EXAMPLE_WALKABLE_ANGLE - 1e-4,
+    ) {
+        return None;
+    }
+
+    // Subtract the stepped distance from remaining time to avoid moving further
+    let move_time = (step_forward + inward) * delta_time;
+
+    Some(StepUpResult {
+        translation: step_translation,
+        move_time,
+        normal: hit.normal1,
+    })
 }
 
 /// This is a simple example inspired by Quake, users are expected to bring their own logic for acceleration.
