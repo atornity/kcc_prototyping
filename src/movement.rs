@@ -410,6 +410,17 @@ fn movement(
             }
         }
 
+        let h = character
+            .velocity
+            .reject_from_normalized(*character.up)
+            .length();
+        let v = character
+            .velocity
+            .project_onto_normalized(*character.up)
+            .length();
+        let all = character.velocity.length();
+        // dbg!([h, v, all]);
+
         // Update the ground
         character.ground = new_ground;
     }
