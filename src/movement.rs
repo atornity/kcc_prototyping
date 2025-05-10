@@ -103,12 +103,6 @@ fn movement(
 ) {
     let main_camera_transform = main_camera.into_inner();
     for (entity, actions, mut transform, mut character, collider, layers) in &mut q_kcc {
-        if actions.action::<Jump>().state() == ActionState::Fired {
-            if character.grounded() {
-                character.jump(EXAMPLE_JUMP_IMPULSE);
-            }
-        }
-
         // Get the raw 2D input vector
         let input_vec = actions.action::<input::Move>().value().as_axis2d();
 
