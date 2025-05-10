@@ -173,6 +173,8 @@ fn movement(
         }
 
         // Sweep in the movement direction to find a plane to project acceleration on
+        // This is a seperate step because trying to do this in the `move_and_slide` callback
+        // results in "sticking" to the wall rather than sliding down at the expected rate
         if let Ok((direction, max_distance)) = Dir3::new_and_length(move_accel * time.delta_secs())
         {
             if let Some((safe_distance, hit)) = sweep_check(

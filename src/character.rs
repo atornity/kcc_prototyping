@@ -178,7 +178,7 @@ pub fn project_motion_on_ground(motion: Vec3, normal: impl TryInto<Dir3>, up: Di
     let mut horizontal = motion - vertical;
 
     // Remove downward velocity
-    if vertical.dot(*up) < 0.0 {
+    if vertical.dot(*normal) < 0.0 {
         vertical = Vec3::ZERO;
     }
 
