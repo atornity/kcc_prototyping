@@ -223,7 +223,13 @@ fn movement(
                     return true;
                 };
 
-                if !is_walkable(step_hit.normal1, character.up, EXAMPLE_WALKABLE_ANGLE) {
+                if !is_walkable(
+                    step_hit.normal1,
+                    character.up,
+                    // Subtract a small amount from walkable angle to make sure we can't step
+                    // on surfaces that are nearly excactly the walkable angle of the character
+                    EXAMPLE_WALKABLE_ANGLE - 1e-4,
+                ) {
                     return true;
                 }
 
