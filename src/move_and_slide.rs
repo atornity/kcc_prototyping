@@ -70,6 +70,16 @@ pub(crate) struct Slide {
     pub remaining_motion: f32,
 }
 
+impl Slide {
+    pub fn project_motion(self) -> SlideResult {
+        SlideResult {
+            translation: self.translation,
+            velocity: self.plane.project_motion(self.velocity),
+            elapsed_time: 0.0,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct SlideResult {
     /// The new translation after sliding.
@@ -86,8 +96,6 @@ pub(crate) struct SlideResult {
 
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
-///
-/// If `on_hit` returns with `SlideOutput::skip_slide` set to true then the `collider` will not slide during that iteration.
 ///
 /// Keeping this as `pub(crate)` for now so I can keep `Slide` and `SlideOutput` as `pub(crate)`.
 /// This is so we can get warnings about unused types/properties which is very useful when deciding whether

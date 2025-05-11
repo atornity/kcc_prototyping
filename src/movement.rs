@@ -6,10 +6,7 @@ use avian3d::{
     },
     sync::PreviousGlobalTransform,
 };
-use bevy::{
-    color::palettes::css::{BLACK, BLUE, GREEN, RED, WHITE, YELLOW},
-    prelude::*,
-};
+use bevy::{color::palettes::css::*, prelude::*};
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
 use crate::{
@@ -311,6 +308,9 @@ fn movement(
             character.config,
             &filter.0,
             time.delta_secs(),
+            // Sliding works differently for the character velocity and the move and slide velocity state
+            // When the character is grounded we want to preserve it's horizontal velocity to avoid slowing down or bouncing off small obstacles
+            // Meanwhile, the move and slide velocity must always be perpendicular to the plane normal in order to progress the simulation in the next step
             |Slide {
                  hit,
                  plane,
