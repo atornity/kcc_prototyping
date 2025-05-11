@@ -52,7 +52,7 @@ impl Default for MoveAndSlideConfig {
 }
 
 /// Result of the move_and_slide function.
-pub(crate) struct MoveAndSlideResult {
+pub struct MoveAndSlideResult {
     pub translation: Vec3,
     pub velocity: Vec3,
     pub remaining_time: f32,
@@ -60,7 +60,7 @@ pub(crate) struct MoveAndSlideResult {
     pub applied_motion: Vec3,
 }
 
-pub(crate) struct Slide {
+pub struct Slide {
     pub hit: ShapeHitData,
     pub plane: PlaneType,
     pub translation: Vec3,
@@ -81,7 +81,7 @@ impl Slide {
 }
 
 #[derive(Default)]
-pub(crate) struct SlideResult {
+pub struct SlideResult {
     /// The new translation after sliding.
     pub translation: Vec3,
     /// The new velocity after sliding.
@@ -96,11 +96,7 @@ pub(crate) struct SlideResult {
 
 /// Pure function that returns new translation and velocity based on the current translation,
 /// velocity, and rotation.
-///
-/// Keeping this as `pub(crate)` for now so I can keep `Slide` and `SlideOutput` as `pub(crate)`.
-/// This is so we can get warnings about unused types/properties which is very useful when deciding whether
-/// or not it's safe to delete stuff.
-pub(crate) fn move_and_slide(
+pub fn move_and_slide(
     spatial_query: &SpatialQuery,
     collider: &Collider,
     origin: Vec3,
@@ -190,10 +186,10 @@ pub(crate) fn move_and_slide(
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct SlidePlanes(pub Vec<Dir3>); // TODO: smallvec
+pub struct SlidePlanes(pub Vec<Dir3>); // TODO: smallvec
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum PlaneType {
+pub enum PlaneType {
     Plane(Dir3),
     Crease { crease: Dir3, planes: [Dir3; 2] },
     Corner([Dir3; 3]),
