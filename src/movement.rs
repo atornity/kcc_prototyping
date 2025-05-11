@@ -6,7 +6,10 @@ use avian3d::{
     },
     sync::PreviousGlobalTransform,
 };
-use bevy::prelude::*;
+use bevy::{
+    color::palettes::css::{BLACK, BLUE, GREEN, RED, WHITE, YELLOW},
+    prelude::*,
+};
 use bevy_enhanced_input::prelude::{ActionState, Actions};
 
 use crate::{
@@ -176,6 +179,7 @@ fn platform_movement(
 }
 
 fn movement(
+    mut gizmos: Gizmos,
     mut q_kcc: Query<
         (
             &Actions<DefaultContext>,
@@ -309,12 +313,33 @@ fn movement(
             time.delta_secs(),
             |Slide {
                  hit,
+                 plane,
                  translation,
                  mut velocity,
                  direction,
                  remaining_motion,
                  ..
              }| {
+                // Debug slide plane
+                match plane {
+                    PlaneType::Plane(normal) => {
+                        gizmos.arrow(translation, translation + *normal, WHITE);
+                    }
+                    PlaneType::Crease { crease, .. } => {
+                        gizmos.arrow(
+                            translation,
+                            translation
+                                + velocity
+                                    .project_onto_normalized(*crease)
+                                    .normalize_or_zero(),
+                            YELLOW,
+                        );
+                    }
+                    PlaneType::Corner(_) => {
+                        gizmos.cross(translation, 1.0, RED);
+                    }
+                }
+
                 if let Some(ground) = Ground::new_if_walkable(
                     hit.entity,
                     hit.normal1,
@@ -323,12 +348,28 @@ fn movement(
                 ) {
                     new_ground = Some(ground);
 
-                    // Avoid sliding down slopes when just landing
-                    if !character.grounded() {
-                        velocity = project_motion_on_ground(velocity, hit.normal1, character.up);
+                    // Slide velocity on the ground
+                    match plane {
+                        PlaneType::Plane(normal) => {
+                            velocity = project_motion_on_ground(velocity, normal, character.up);
 
-                        character.velocity =
-                            project_motion_on_ground(character.velocity, hit.normal1, character.up);
+                            // Projecting the character velocity on the ground results in sudden slowdown when stepping over small obstacles
+                            // We still have to do it when landing to make sure velocity is not going into the ground
+                            if !character.grounded() {
+                                character.velocity = project_motion_on_ground(
+                                    character.velocity,
+                                    normal,
+                                    character.up,
+                                );
+                            }
+                        }
+                        plane => {
+                            velocity = plane.project_motion(velocity);
+
+                            if !character.grounded() {
+                                character.velocity = plane.project_motion(character.velocity);
+                            }
+                        }
                     }
 
                     return SlideResult {
@@ -361,22 +402,30 @@ fn movement(
                             translation: step_result.translation,
                             elapsed_time: step_result.elapsed_time,
                             velocity,
-                            skip_slide: true, // Successfully stepped, don't slide this iteration
                         };
                     }
                 }
 
-                // Slide vleocity along walls
-                match grounded {
-                    // Avoid sliding up walls when grounded
-                    true => {
-                        character.velocity =
-                            project_motion_on_wall(character.velocity, hit.normal1, character.up);
-
-                        velocity = project_motion_on_wall(velocity, hit.normal1, character.up)
+                // Slide veleocity along walls
+                // We are duplicating behaviour here because velocity and character velocity are not guaranteed to be the same values
+                match plane {
+                    PlaneType::Plane(normal) => match grounded {
+                        // Avoid sliding up walls when grounded
+                        true => {
+                            velocity = project_motion_on_wall(velocity, normal, character.up);
+                            character.velocity =
+                                project_motion_on_wall(character.velocity, normal, character.up);
+                        }
+                        false => {
+                            velocity = velocity.reject_from_normalized(*normal);
+                            character.velocity = character.velocity.reject_from_normalized(*normal);
+                        }
+                    },
+                    plane => {
+                        velocity = plane.project_motion(velocity);
+                        character.velocity = plane.project_motion(character.velocity);
                     }
-                    false => character.velocity = character.velocity.reject_from(hit.normal1),
-                };
+                }
 
                 SlideResult {
                     translation,
@@ -385,6 +434,14 @@ fn movement(
                 }
             },
         );
+
+        if let Ok(direction) = Dir3::new(move_result.applied_motion) {
+            gizmos.arrow(
+                transform.translation,
+                transform.translation + *direction,
+                BLACK,
+            );
+        }
 
         transform.translation = move_result.translation;
 
@@ -405,17 +462,6 @@ fn movement(
                 new_ground = Some(ground);
             }
         }
-
-        let h = character
-            .velocity
-            .reject_from_normalized(*character.up)
-            .length();
-        let v = character
-            .velocity
-            .project_onto_normalized(*character.up)
-            .length();
-        let all = character.velocity.length();
-        // dbg!([h, v, all]);
 
         // Update the ground
         character.ground = new_ground;
